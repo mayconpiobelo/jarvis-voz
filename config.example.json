@@ -21,6 +21,7 @@
   "stt_model": "small",
   "stt_language": "pt",
   "mic_device": null,
+  "speaker_device": null,
   "tts_engine": "kokoro",
   "kokoro_voice": "pm_alex:0.8,bm_george:0.2",
   "kokoro_speed": 0.9,

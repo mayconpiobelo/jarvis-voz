@@ -48,6 +48,8 @@ O script cria o `.venv`, instala as dependências, copia `config.example.json` �
 “insira: *texto* na lista de tarefas” · “quais são as minhas tarefas” · “conclua a tarefa 2” · “remova a tarefa do contrato” · “desfazer”. Detalhes em [docs/TAREFAS.md](docs/TAREFAS.md).
 
 ## Configuração
+**Microfone e caixas de som** (funciona sem fone): `mic_device` e `speaker_device`. `"notebook"` usa sempre o som interno do notebook; `null` (ou `"auto"`) segue o padrão do Windows, pulando dispositivos virtuais (como o Steam Streaming) e caindo no do notebook; um trecho do nome (ex.: `"HyperX"`) escolhe um dispositivo específico. Se o escolhido sumir (fone desligado), o Jarvis usa o do notebook sozinho. Para ver os nomes: `.venv\Scripts\python.exe -c "import sounddevice as sd; print(sd.query_devices())"`. A escolha aparece no `jarvis.log`.
+
 A música usa `painel.musica` (`enabled` e `app`, o player preferido; padrão `Spotify`). O painel e os seus atalhos (apps, pastas e links) ficam em `painel` no `config.json`: `hotkey`, `corner` (`tr`, `tl`, `br`, `bl`, `c`) e `atalhos` (`{id, nome, tipo: app|url, alvo}`; o botão “Adicionar” do painel abre o arquivo). O navegador nunca recebe o `alvo`, só o `id`.
 
 Tudo está em `config.json` (modelo em `config.example.json`): atalho, voz (`kokoro_*`), persona, bloqueios e confirmação, posição do overlay (`overlay.corner/size/margin`), arquivo de tarefas. Veja [docs/VOZ.md](docs/VOZ.md).

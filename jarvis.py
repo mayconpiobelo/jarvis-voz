@@ -67,6 +67,76 @@ def save_state(state: dict) -> None:
     STATE_FILE.write_text(json.dumps(state), encoding="utf-8")
 
 
+# ----------------------------------------------------------------- audio: dispositivos
+_ultimo_disp: dict[str, object] = {}
+
+
+def _lista_dispositivos(recarregar: bool = False):
+    """(dispositivos, apis, padrao_entrada, padrao_saida). `recarregar` relê o hardware: o PortAudio guarda a
+    lista do momento em que iniciou e nao percebe fone ligado/desligado sozinho."""
+    import sounddevice as sd
+
+    if recarregar:
+        try:
+            sd._terminate()
+            sd._initialize()
+        except Exception:
+            log.exception("nao consegui reler os dispositivos de audio")
+    devs = [dict(d, index=i) for i, d in enumerate(sd.query_devices())]
+    apis = [dict(a) for a in sd.query_hostapis()]
+    try:
+        pad_in, pad_out = sd.default.device
+    except Exception:
+        pad_in = pad_out = None
+    return devs, apis, (pad_in if isinstance(pad_in, int) and pad_in >= 0 else None), (pad_out if isinstance(pad_out, int) and pad_out >= 0 else None)
+
+
+def dispositivos_de(tipo: str, recarregar: bool = False) -> list:
+    """Ordem de tentativa para entrada/saida: o configurado (mic_device / speaker_device), o do notebook, o padrao."""
+    import audio_disp
+
+    devs, apis, pad_in, pad_out = _lista_dispositivos(recarregar)
+    pref = CFG.get("mic_device" if tipo == audio_disp.ENTRADA else "speaker_device")
+    lista = audio_disp.candidatos(devs, tipo, pref, pad_in if tipo == audio_disp.ENTRADA else pad_out, apis)
+    escolhido = lista[0]
+    if _ultimo_disp.get(tipo) != escolhido:  # registra so quando muda
+        _ultimo_disp[tipo] = escolhido
+        nome = next((d["name"] for d in devs if d["index"] == escolhido), "padrao do Windows")
+        log.info("%s de audio: %s", "microfone" if tipo == audio_disp.ENTRADA else "alto-falante", nome)
+    return lista
+
+
+def abrir_entrada(**kw):
+    """Abre o microfone: tenta o configurado, depois o do notebook, depois o padrao (relendo o hardware na falha)."""
+    import sounddevice as sd
+
+    ultimo: Exception | None = None
+    for tentativa in (False, True):
+        for dev in dispositivos_de("entrada", recarregar=tentativa):
+            try:
+                return sd.InputStream(device=dev, **kw)
+            except Exception as e:  # PortAudioError: dispositivo sumiu, ocupado, sem permissao...
+                ultimo = e
+                log.warning("microfone %s indisponivel: %s", dev, e)
+    raise ultimo if ultimo else RuntimeError("nenhum microfone disponivel")
+
+
+def tocar(audio, sr: int) -> None:
+    """Toca nao-bloqueante no alto-falante escolhido (com reserva); levanta se nenhum funcionar."""
+    import sounddevice as sd
+
+    ultimo: Exception | None = None
+    for tentativa in (False, True):
+        for dev in dispositivos_de("saida", recarregar=tentativa):
+            try:
+                sd.play(audio, sr, device=dev)
+                return
+            except Exception as e:
+                ultimo = e
+                log.warning("alto-falante %s indisponivel: %s", dev, e)
+    raise ultimo if ultimo else RuntimeError("nenhum alto-falante disponivel")
+
+
 # ----------------------------------------------------------------- audio: STT
 _whisper = None
 _whisper_lock = threading.Lock()
@@ -84,8 +154,6 @@ def get_whisper():
 
 
 def record_until_silence() -> np.ndarray | None:
-    import sounddevice as sd
-
     silence_after = 1.3
     give_up_if_no_speech = 6.0
     max_seconds = 30.0
@@ -97,12 +165,11 @@ def record_until_silence() -> np.ndarray | None:
     noise_samples: list[float] = []
     threshold = 400.0
 
-    with sd.InputStream(
+    with abrir_entrada(
         samplerate=SAMPLE_RATE,
         channels=1,
         dtype="int16",
         blocksize=CHUNK,
-        device=CFG.get("mic_device"),
     ) as stream:
         for i in range(int(max_seconds * per_sec)):
             data, _ = stream.read(CHUNK)
@@ -331,7 +398,7 @@ def speak_kokoro(text: str) -> None:
                 continue  # esvazia a fila para o produtor terminar
             audio, sr = item
             env = frame_envelope(audio, sr)
-            sd.play(audio, sr)
+            tocar(audio, sr)
             t0 = time.time()
             end = t0 + len(audio) / sr + 0.05
             while time.time() < end and not _stop.is_set():
@@ -541,10 +608,18 @@ _status_cb = lambda s: None  # noqa: E731  (trocado pela bandeja)
 
 
 def beep(freq: int, ms: int = 110) -> None:
+    """Bip pelo alto-falante escolhido (o winsound usa so o padrao do Windows, que pode ser um dispositivo virtual)."""
     try:
-        winsound.Beep(freq, ms)
-    except RuntimeError:
-        pass
+        sr = 24000
+        t = np.arange(int(sr * ms / 1000)) / sr
+        env = np.minimum(1.0, np.minimum(t, t[-1] - t) / 0.008)  # entrada/saida suaves: sem estalo
+        tocar((0.25 * np.sin(2 * np.pi * freq * t) * env).astype(np.float32), sr)
+        time.sleep(ms / 1000)
+    except Exception:
+        try:
+            winsound.Beep(freq, ms)
+        except RuntimeError:
+            pass
 
 
 _lista_tarefas = None
