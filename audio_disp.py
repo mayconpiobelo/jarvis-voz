@@ -20,6 +20,7 @@ NAO_NOTEBOOK = ("nvidia", "amd high definition", "hdmi", "displayport", "display
                 "hands-free", "headset", "usb", "steam", "virtual")
 INTERNOS = ("realtek", "smart sound", "conexant", "synaptics", "cirrus", "internal", "interno", "embutid", "built-in",
             "microphone array", "array de microfones", "grupo de microfones")
+MONITORES = ("nvidia", "amd high definition", "hdmi", "displayport", "display audio")
 APELIDOS_NOTEBOOK = {"notebook", "interno", "embutido", "laptop", "builtin", "built-in"}
 
 
@@ -79,8 +80,10 @@ def escolher(dispositivos: list[dict], tipo: str, preferencia, padrao: int | Non
                 return d["index"]
         # nome nao encontrado (fone desligado?): cai no automatico
 
+    # Automatico = acompanha o padrao do Windows (o fone/headset vira o padrao ao ser conectado e, ao sair, volta o
+    # som do notebook). Pula so o que nao serve de verdade: dispositivo virtual e, na saida, caixa de monitor (HDMI).
     d = todos_por_indice.get(padrao) if padrao is not None else None
-    if d is not None and not e_virtual(d["name"]):
+    if d is not None and not e_virtual(d["name"]) and not (tipo == SAIDA and _tem(d["name"], MONITORES)):
         return d["index"]
     n = do_notebook(dispositivos, tipo, apis)
     if n is not None:

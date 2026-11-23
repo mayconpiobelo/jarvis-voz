@@ -46,6 +46,21 @@ def test_auto_pula_dispositivo_virtual_mas_respeita_um_padrao_real():
     assert ad.escolher(DEVS, ad.ENTRADA, "", 2, APIS) == 2
 
 
+def test_auto_acompanha_o_headset_quando_ele_e_o_padrao_e_volta_ao_notebook_sem_ele():
+    # com o headset conectado o Windows o torna padrao (entrada e saida): o Jarvis vai junto
+    assert ad.escolher(DEVS, ad.ENTRADA, "auto", 1, APIS) == 1 and ad.escolher(DEVS, ad.SAIDA, "auto", 6, APIS) == 6
+    # sem headset o padrao do Windows e o som do notebook: tambem vai junto
+    sem_fone = [x for x in DEVS if "HyperX" not in x["name"]]
+    assert ad.escolher(sem_fone, ad.ENTRADA, "auto", 2, APIS) == 2 and ad.escolher(sem_fone, ad.SAIDA, "auto", 8, APIS) == 8
+    # padrao sumiu junto com o headset (indice antigo): cai no notebook
+    assert ad.escolher(sem_fone, ad.SAIDA, "auto", 6, APIS) == 8 and ad.escolher(sem_fone, ad.ENTRADA, "auto", 1, APIS) == 2
+
+
+def test_auto_pula_caixa_de_monitor_como_saida_padrao():
+    assert ad.escolher(DEVS, ad.SAIDA, "auto", 7, APIS) == 8                          # padrao = monitor AMD (HDMI): usa o notebook
+    assert ad.escolher(DEVS, ad.SAIDA, "auto", 9, APIS) == 8                          # padrao = monitor NVIDIA
+
+
 def test_nome_ou_indice_explicito():
     assert ad.escolher(DEVS, ad.ENTRADA, "hyperx", 2, APIS) == 1
     assert ad.escolher(DEVS, ad.SAIDA, "REALTEK", None, APIS) == 8                    # sem diferenciar maiusculas
