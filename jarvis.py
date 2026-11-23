@@ -775,6 +775,7 @@ def voice_round() -> None:
     try:
         _status_cb("listening")
         beep(880)
+        time.sleep(0.3)  # com microfone e caixas do notebook, o eco do bip nao pode entrar na calibracao do ruido
         audio = record_until_silence()
         beep(660)
         if audio is None:
