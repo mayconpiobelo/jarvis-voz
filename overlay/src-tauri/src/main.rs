@@ -157,9 +157,25 @@ extern "system" {
     fn GetWindowRect(h: isize, r: *mut RectWin) -> i32;
 }
 
+#[link(name = "shell32")]
+extern "system" {
+    fn SHQueryUserNotificationState(estado: *mut i32) -> i32;
+}
+
+/// Jogo em tela cheia, apresentacao ou app exclusivo em primeiro plano (estados 2, 3 e 4 do Windows)?
+/// Esses apps roubam o foco de tempos em tempos; a esfera nao deve ir atras deles.
+fn tela_cheia_em_uso() -> bool {
+    let mut e: i32 = 0;
+    // SAFETY: `e` vive durante a chamada.
+    unsafe { SHQueryUserNotificationState(&mut e) == 0 && (2..=4).contains(&e) }
+}
+
 /// Monitor onde esta a janela em uso agora (a que esta em primeiro plano), se der para saber.
-/// Janelas minimizadas (fora de qualquer tela) sao ignoradas.
+/// Janelas minimizadas (fora de qualquer tela) e jogos/apps em tela cheia sao ignorados: a esfera fica onde estava.
 fn monitor_da_janela_ativa(app: &AppHandle) -> Option<tauri::Monitor> {
+    if tela_cheia_em_uso() {
+        return None; // fica onde esta
+    }
     let mut r = RectWin { left: 0, top: 0, right: 0, bottom: 0 };
     // SAFETY: chamadas simples da API do Windows; `r` vive durante a chamada.
     let ok = unsafe {
