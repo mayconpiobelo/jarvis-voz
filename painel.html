@@ -367,7 +367,7 @@
     for (const a of lista) {
       const b = el('button', 'tile'); b.type = 'button'; b.title = a.nome;
       const ic = el('span', 'ic'); ic.innerHTML = svg(a.icone); b.append(ic, el('span', '', a.nome));
-      b.onclick = async () => { await post('/api/acao', { acao: a.id }); if (!pinned && a.id !== 'esfera' && a.id !== 'nova_conversa') fechar(); };
+      b.onclick = async () => { const r = await post('/api/acao', { acao: a.id }); if (r && r.mensagem) avisar(r.mensagem); if (!pinned && a.id !== 'esfera' && a.id !== 'nova_conversa') fechar(); };
       box.append(b);
     }
     const add = el('button', 'tile add'); add.type = 'button'; add.title = 'Editar atalhos (abre o config.json)';

@@ -110,6 +110,20 @@ def test_geometria_do_painel_salva_valida_e_restaura(srv, tmp_path, monkeypatch)
     assert estado["geom"] is None and estado["reset"] == antes + 1             # o app percebe a restauracao pelo contador
 
 
+def test_esfera_do_painel_liga_mostra_um_instante_e_desliga(srv):
+    jarvis.CURRENT["esfera_visivel"] = True
+    st, r = chamar(srv, "POST", "/api/acao", {"acao": "esfera"})            # desliga
+    assert st == 200 and "desligada" in r["mensagem"]
+    assert chamar(srv, "GET", "/api/status")[1]["esfera_demo"] is False
+    st, r = chamar(srv, "POST", "/api/acao", {"acao": "esfera"})            # liga: aparece alguns segundos
+    assert "ligada" in r["mensagem"]
+    estado = chamar(srv, "GET", "/api/status")[1]
+    assert estado["esfera_visivel"] is True and estado["esfera_demo"] is True
+    chamar(srv, "POST", "/api/acao", {"acao": "esfera"})                    # desliga de novo: some na hora
+    assert chamar(srv, "GET", "/api/status")[1]["esfera_demo"] is False
+    jarvis.CURRENT["esfera_visivel"] = True
+
+
 def test_geometria_corrompida_vira_posicao_padrao(tmp_path, monkeypatch):
     f = tmp_path / "geom.json"
     monkeypatch.setattr(jarvis, "PAINEL_GEOM", f)

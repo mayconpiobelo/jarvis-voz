@@ -869,6 +869,19 @@ def abrir_atalho(item: dict) -> dict:
     return {"ok": True}
 
 
+_esfera_demo_ate = 0.0
+
+
+def esfera_alternar() -> bool:
+    """Liga/desliga a esfera flutuante. Ao ligar, ela aparece alguns segundos para voce ver que funcionou
+    (fora isso ela so surge quando o Jarvis esta ouvindo, pensando ou falando)."""
+    global _esfera_demo_ate
+    ligada = not CURRENT.get("esfera_visivel", True)
+    CURRENT["esfera_visivel"] = ligada
+    _esfera_demo_ate = time.time() + 3.5 if ligada else 0.0
+    return ligada
+
+
 def executar_acao(acao: str) -> dict:
     """Acoes do painel. So aceita ids conhecidos (internos ou definidos no config): nunca um alvo vindo do navegador."""
     if acao == "falar":
@@ -882,7 +895,8 @@ def executar_acao(acao: str) -> dict:
 
         webbrowser.open(f"http://127.0.0.1:{HISTORY_PORT}")
     elif acao == "esfera":
-        CURRENT["esfera_visivel"] = not CURRENT.get("esfera_visivel", True)
+        ligada = esfera_alternar()
+        return {"ok": True, "mensagem": "Esfera ligada: aparece quando o Jarvis estiver em ação." if ligada else "Esfera desligada."}
     elif acao == "configurar":  # tile "Adicionar" do painel: abre o config.json para editar os atalhos
         alvo = BASE / "config.json"
         os.startfile(str(alvo if alvo.exists() else BASE / "config.example.json"))
@@ -1002,6 +1016,7 @@ def start_history_server() -> None:
                                   "application/json; charset=utf-8")
             if path == "/api/status":
                 CURRENT["pending"] = time.time() < _pending_until  # aguardando "confirma"?
+                CURRENT["esfera_demo"] = time.time() < _esfera_demo_ate  # acabou de ligar a esfera: mostra um instante
                 return self._send(200, json.dumps(CURRENT).encode(), "application/json")
             self._send(404, b"not found", "text/plain")
 
@@ -1293,7 +1308,7 @@ def run_tray() -> None:
         webbrowser.open(f"http://127.0.0.1:{HISTORY_PORT}")
 
     def alternar_overlay(_i=None, _it=None):
-        CURRENT["esfera_visivel"] = not CURRENT.get("esfera_visivel", True)
+        esfera_alternar()
 
     def abrir_painel(_i=None, _it=None):
         painel_hotkey()
