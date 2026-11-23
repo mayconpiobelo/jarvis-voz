@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis — Laboratório de voz</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --panel: #ffffff; --text: #16202c; --muted: #66758a; --border: #d8dfe9;
+    --accent: #0a8fb0; --accent-text: #ffffff; --sel-bg: #e3f4f9; --code-bg: #eef2f7; --danger: #c0392b; --ok: #1f9d55;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d141c; --panel: #131c27; --text: #e6edf5; --muted: #8b9bb0; --border: #243245;
+      --accent: #28c4e6; --accent-text: #05202a; --sel-bg: #112a36; --code-bg: #0b1119; --danger: #ef6a5a; --ok: #3ecf80;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, "Segoe UI", sans-serif; padding-bottom: 210px; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+  header { padding: 20px 0 6px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 20px; letter-spacing: .04em; }
+  .sub { color: var(--muted); font-size: 14px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 22px 0 8px; font-weight: 600; }
+  textarea { width: 100%; min-height: 76px; resize: vertical; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); font: inherit; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 10px; }
+  .card { background: var(--panel); border: 2px solid var(--border); border-radius: 12px; padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; text-align: left; font: inherit; color: inherit; }
+  .card:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+  .card.sel { border-color: var(--accent); background: var(--sel-bg); }
+  .card:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .top { display: flex; align-items: center; gap: 8px; }
+  .name { font-weight: 600; flex: 1; }
+  .badge { font-size: 11px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--border); color: var(--muted); }
+  .badge.cur { color: var(--ok); border-color: var(--ok); }
+  .desc { color: var(--muted); font-size: 13px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip { font-size: 11px; padding: 1px 7px; border-radius: 6px; background: var(--code-bg); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .play { flex: none; width: 38px; height: 38px; border-radius: 50%; border: none; background: var(--accent); color: var(--accent-text); font-size: 15px; cursor: pointer; display: grid; place-items: center; }
+  .play:hover { filter: brightness(1.08); }
+  .play:disabled { opacity: .6; cursor: progress; }
+  details { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .ctrls { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px 20px; margin-top: 12px; }
+  .ctrl label { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 2px; }
+  .ctrl output { font-variant-numeric: tabular-nums; color: var(--text); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select { width: 100%; padding: 7px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font: inherit; }
+  .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+  button.btn { padding: 8px 14px; border-radius: 9px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font: inherit; cursor: pointer; }
+  button.btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button.btn.danger { color: var(--danger); }
+  #status { color: var(--muted); font-size: 13px; }
+  #status.err { color: var(--danger); }
+  .dock { position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel); border-top: 2px solid var(--accent); padding: 12px 0 14px; box-shadow: 0 -6px 18px rgba(0,0,0,.12); }
+  .dock .wrap { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; align-items: start; }
+  .dock h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  #selName { font-weight: 700; font-size: 16px; }
+  pre { margin: 6px 0 0; padding: 8px 10px; background: var(--code-bg); border-radius: 8px; font: 12.5px/1.45 ui-monospace, Consolas, monospace; white-space: pre-wrap; word-break: break-all; max-height: 92px; overflow: auto; }
+  .dock .actions { display: flex; flex-direction: column; gap: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Laboratório de voz</h1>
+    <span class="sub">Clique num cartão para selecioná-lo e em ▶ para ouvir. A escolha aparece no painel de baixo.</span>
+  </header>
+
+  <h2>Frase de teste</h2>
+  <textarea id="phrase" aria-label="Frase de teste"></textarea>
+
+  <h2>Opções</h2>
+  <div class="grid" id="grid"></div>
+
+  <h2>Ajuste fino</h2>
+  <details id="fine">
+    <summary>Montar a minha própria voz</summary>
+    <div class="ctrls">
+      <div class="ctrl"><label for="vA">Voz principal</label><select id="vA"></select></div>
+      <div class="ctrl"><label for="vB">Voz misturada</label><select id="vB"></select></div>
+      <div class="ctrl"><label for="mix">Quanto da misturada <output id="o_mix"></output></label><input id="mix" type="range" min="0" max="60" step="5"></div>
+      <div class="ctrl"><label for="speed">Ritmo <output id="o_speed"></output></label><input id="speed" type="range" min="0.7" max="1.1" step="0.01"></div>
+      <div class="ctrl"><label for="pitch">Tom (menor = mais grave) <output id="o_pitch"></output></label><input id="pitch" type="range" min="0.84" max="1.04" step="0.01"></div>
+      <div class="ctrl"><label for="warmth">Calor nos graves <output id="o_warmth"></output></label><input id="warmth" type="range" min="0" max="0.6" step="0.02"></div>
+      <div class="ctrl"><label for="reverb">Ambiência (eco) <output id="o_reverb"></output></label><input id="reverb" type="range" min="0" max="0.5" step="0.02"></div>
+      <div class="ctrl"><label for="pause">Pausa entre frases (ms) <output id="o_pause"></output></label><input id="pause" type="range" min="0" max="500" step="10"></div>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="playCustom">▶ Ouvir esta voz</button>
+      <span id="status" role="status" aria-live="polite"></span>
+    </div>
+  </details>
+</div>
+
+<div class="dock">
+  <div class="wrap">
+    <div>
+      <h3>Selecionada</h3>
+      <div id="selName">Nenhuma ainda</div>
+      <pre id="selCode">Clique em um cartão.</pre>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="copy">Copiar texto</button>
+      <button class="btn danger" id="quit">Encerrar laboratório</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const PHRASE_PT = "Bom dia, senhor. Todos os sistemas estão operando normalmente. A sua agenda de hoje está livre, e o clima está agradável. Como posso ajudá-lo?";
+const PHRASE_EN = "Good morning, sir. All systems are operating normally. Your schedule is clear today, and the weather is pleasant. How may I assist you?";
+const FX_FILM = { speed: 0.90, pitch: 0.92, warmth: 0.28, reverb: 0.22, pause: 250 };
+const FX_CALM = { speed: 0.90, pitch: 0.94, warmth: 0.25, reverb: 0.00, pause: 220 };
+const FX_BR   = { speed: 0.90, pitch: 0.95, warmth: 0.20, reverb: 0.00, pause: 220 };
+const FX_RAW  = { speed: 0.95, pitch: 1.00, warmth: 0.00, reverb: 0.00, pause: 0 };
+
+const PRESETS = [
+  { id: 'atual',  name: 'Atual no Jarvis', cur: true, desc: 'IA do filme, 80% pm_alex + 20% bm_george. É o que está ativo hoje.', voice: 'pm_alex:0.8,bm_george:0.2', ...FX_FILM },
+  { id: 'alex',   name: 'pm_alex puro, IA do filme', desc: 'Sem mistura britânica, com o mesmo tratamento.', voice: 'pm_alex', ...FX_FILM },
+  { id: 'mix10',  name: 'Alex 90% + George 10%', desc: 'Só um toque de timbre britânico.', voice: 'pm_alex:0.9,bm_george:0.1', ...FX_FILM },
+  { id: 'mix35',  name: 'Alex 65% + George 35%', desc: 'Mais timbre britânico; pode alterar a pronúncia.', voice: 'pm_alex:0.65,bm_george:0.35', ...FX_FILM },
+  { id: 'lewis',  name: 'Alex 80% + Lewis 20%', desc: 'Outra voz britânica na mistura.', voice: 'pm_alex:0.8,bm_lewis:0.2', ...FX_FILM },
+  { id: 'daniel', name: 'Alex 80% + Daniel 20%', desc: 'Outra voz britânica na mistura.', voice: 'pm_alex:0.8,bm_daniel:0.2', ...FX_FILM },
+  { id: 'fable',  name: 'Alex 80% + Fable 20%', desc: 'Outra voz britânica na mistura.', voice: 'pm_alex:0.8,bm_fable:0.2', ...FX_FILM },
+  { id: 'santa',  name: 'pm_santa puro, IA do filme', desc: 'A outra voz masculina brasileira.', voice: 'pm_santa', ...FX_FILM },
+  { id: 'calma',  name: 'Grave e calma (sem eco)', desc: 'pm_alex mais grave e lento, sem ambiência.', voice: 'pm_alex', ...FX_CALM },
+  { id: 'brs',    name: 'Alex 60% + Santa 40%', desc: 'Mistura das duas vozes brasileiras, sem eco.', voice: 'pm_alex:0.6,pm_santa:0.4', ...FX_BR },
+  { id: 'crua',   name: 'pm_alex original', desc: 'Sem tratamento nenhum, como o Kokoro entrega.', voice: 'pm_alex', ...FX_RAW },
+  { id: 'en',     name: 'Referência: inglês britânico', desc: 'bm_george puro falando inglês, só para comparar com o filme. O Jarvis hoje fala português.', voice: 'bm_george', lang: 'en-gb', text: PHRASE_EN, ...FX_FILM },
+];
+
+const $ = id => document.getElementById(id);
+const sliders = ['mix', 'speed', 'pitch', 'warmth', 'reverb', 'pause'];
+let selected = null;       // objeto com os parâmetros da seleção atual
+let audio = null, busyBtn = null;
+
+try { const s = localStorage.getItem('jarvis-lab-phrase'); $('phrase').value = s || PHRASE_PT; } catch { $('phrase').value = PHRASE_PT; }
+$('phrase').addEventListener('input', () => { try { localStorage.setItem('jarvis-lab-phrase', $('phrase').value); } catch {} });
+
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+
+function chipsFor(p) {
+  return [`ritmo ${p.speed.toFixed(2)}`, `tom ${p.pitch.toFixed(2)}`, `calor ${p.warmth.toFixed(2)}`, `eco ${p.reverb.toFixed(2)}`, `pausa ${p.pause}ms`];
+}
+
+function renderCards() {
+  const grid = $('grid'); grid.replaceChildren();
+  for (const p of PRESETS) {
+    const card = el('div', 'card'); card.id = 'card_' + p.id; card.tabIndex = 0; card.setAttribute('role', 'radio'); card.setAttribute('aria-checked', 'false');
+    const top = el('div', 'top');
+    top.append(el('span', 'name', p.name));
+    if (p.cur) top.append(el('span', 'badge cur', 'ativa'));
+    const play = el('button', 'play', '▶'); play.type = 'button'; play.title = 'Ouvir'; play.setAttribute('aria-label', 'Ouvir ' + p.name);
+    play.addEventListener('click', ev => { ev.stopPropagation(); choose(p); playParams(p, play); });
+    top.append(play);
+    const voice = el('div', 'desc', p.desc);
+    const chips = el('div', 'chips'); chips.append(el('span', 'chip', p.voice));
+    for (const c of chipsFor(p)) chips.append(el('span', 'chip', c));
+    card.append(top, voice, chips);
+    card.addEventListener('click', () => choose(p));
+    card.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); choose(p); } });
+    grid.append(card);
+  }
+}
+
+function parseVoice(spec) {
+  const parts = spec.split(',').map(s => s.split(':'));
+  const a = parts[0][0]; const b = parts[1] ? parts[1][0] : '';
+  const wb = parts[1] ? parseFloat(parts[1][1] || '0') : 0;
+  return { a, b, mix: Math.round(wb * 100) };
+}
+function buildVoice(a, b, mix) {
+  if (!b || mix <= 0 || a === b) return a;
+  const wb = mix / 100; return `${a}:${(1 - wb).toFixed(2)},${b}:${wb.toFixed(2)}`;
+}
+
+function setSliders(p) {
+  const v = parseVoice(p.voice);
+  $('vA').value = v.a; $('vB').value = v.b || ''; $('mix').value = v.mix;
+  for (const k of ['speed', 'pitch', 'warmth', 'reverb', 'pause']) $(k).value = p[k];
+  updateOutputs();
+}
+function updateOutputs() {
+  $('o_mix').textContent = $('mix').value + '%';
+  $('o_speed').textContent = (+$('speed').value).toFixed(2);
+  $('o_pitch').textContent = (+$('pitch').value).toFixed(2);
+  $('o_warmth').textContent = (+$('warmth').value).toFixed(2);
+  $('o_reverb').textContent = (+$('reverb').value).toFixed(2);
+  $('o_pause').textContent = $('pause').value;
+}
+
+function choose(p) {
+  selected = p;
+  for (const c of document.querySelectorAll('.card')) { c.classList.remove('sel'); c.setAttribute('aria-checked', 'false'); }
+  const card = $('card_' + p.id); if (card) { card.classList.add('sel'); card.setAttribute('aria-checked', 'true'); }
+  setSliders(p); showSelected();
+}
+
+function customParams() {
+  return {
+    id: 'custom', name: 'Personalizada (ajuste fino)', lang: 'pt-br',
+    voice: buildVoice($('vA').value, $('vB').value, +$('mix').value),
+    speed: +$('speed').value, pitch: +$('pitch').value, warmth: +$('warmth').value, reverb: +$('reverb').value, pause: +$('pause').value,
+  };
+}
+
+function snippet(p) {
+  const lines = [
+    `VOZ ESCOLHIDA: ${p.name}`,
+    `"kokoro_voice": "${p.voice}", "kokoro_speed": ${(+p.speed).toFixed(2)},`,
+    `"kokoro_pitch": ${(+p.pitch).toFixed(2)}, "kokoro_warmth": ${(+p.warmth).toFixed(2)}, "kokoro_reverb": ${(+p.reverb).toFixed(2)}, "kokoro_pause_ms": ${p.pause}`,
+  ];
+  if (p.lang === 'en-gb') lines.push('(atenção: opção em inglês britânico; o Jarvis hoje responde em português)');
+  return lines.join('\n');
+}
+function showSelected() {
+  if (!selected) return;
+  $('selName').textContent = selected.name;
+  $('selCode').textContent = snippet(selected);
+}
+
+let playToken = 0;
+function stopAudio() {
+  playToken++;                                   // invalida qualquer geração em andamento
+  if (audio) { audio.pause(); audio = null; }
+  if (busyBtn) { busyBtn.textContent = busyBtn.dataset.label; busyBtn.disabled = false; busyBtn = null; }
+}
+async function playParams(p, btn) {
+  const wasThis = busyBtn === btn;               // clicar de novo no ■ para
+  stopAudio();
+  if (wasThis) return;
+  if (!btn.dataset.label) btn.dataset.label = btn.textContent;
+  const my = ++playToken;
+  busyBtn = btn; btn.textContent = '…'; btn.disabled = true; setStatus('');
+  try {
+    const body = { text: p.text || $('phrase').value, voice: p.voice, lang: p.lang || 'pt-br', speed: p.speed, pitch: p.pitch, warmth: p.warmth, reverb: p.reverb, pause: p.pause };
+    const r = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) { let m = 'erro ' + r.status; try { m = (await r.json()).erro || m; } catch {} throw new Error(m); }
+    const blob = await r.blob();
+    if (my !== playToken) return;                // outro clique aconteceu enquanto gerava
+    audio = new Audio(URL.createObjectURL(blob));
+    audio.addEventListener('ended', () => { if (my === playToken) stopAudio(); });
+    btn.textContent = '■'; btn.disabled = false;
+    await audio.play();
+  } catch (e) {
+    if (my === playToken) { stopAudio(); setStatus('Falha ao gerar a voz: ' + e.message, true); }
+  }
+}
+function setStatus(t, err) { const s = $('status'); s.textContent = t; s.className = err ? 'err' : ''; }
+
+async function init() {
+  renderCards();
+  let names = [];
+  try { names = await (await fetch('/api/voices')).json(); } catch { setStatus('Não consegui listar as vozes (o laboratório está rodando?)', true); }
+  const optA = $('vA'), optB = $('vB'); optB.append(new Option('(nenhuma)', ''));
+  for (const n of names) { optA.append(new Option(n, n)); optB.append(new Option(n, n)); }
+  for (const id of sliders) $(id).addEventListener('input', () => { updateOutputs(); useCustom(); });
+  $('vA').addEventListener('change', useCustom); $('vB').addEventListener('change', useCustom);
+  $('playCustom').addEventListener('click', () => { if (busyBtn !== $('playCustom')) useCustom(); playParams(selected, $('playCustom')); });
+  choose(PRESETS[0]);
+}
+function useCustom() {
+  selected = customParams();
+  for (const c of document.querySelectorAll('.card')) { c.classList.remove('sel'); c.setAttribute('aria-checked', 'false'); }
+  showSelected();
+}
+
+$('copy').addEventListener('click', async () => {
+  const t = $('selCode').textContent;
+  try { await navigator.clipboard.writeText(t); $('copy').textContent = 'Copiado!'; }
+  catch { const r = document.createRange(); r.selectNodeContents($('selCode')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $('copy').textContent = 'Selecionado: Ctrl+C'; }
+  setTimeout(() => $('copy').textContent = 'Copiar texto', 2000);
+});
+$('quit').addEventListener('click', async () => {
+  if (!confirm('Encerrar o laboratório de voz?')) return;
+  try { await fetch('/api/quit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); } catch {}
+  document.body.replaceChildren(Object.assign(document.createElement('p'), { textContent: 'Laboratório encerrado. Pode fechar esta janela.', style: 'padding:24px' }));
+});
+init();
+</script>
+</body>
+</html>
