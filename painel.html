@@ -93,6 +93,13 @@
   .nova svg.i { color: var(--faint); }
   .nova input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--text); font: inherit; font-weight: 600; outline: none; user-select: text; }
   .nova input::placeholder { color: var(--faint); font-weight: 500; }
+  .quando { margin-top: 6px; padding: 9px 11px; border-radius: 12px; background: rgba(77,213,255,.08); border: 1px solid rgba(77,213,255,.3); }
+  .quando .qq { font-size: 11.5px; font-weight: 700; color: var(--ac1); } .quando .qq small { color: var(--faint); font-weight: 500; margin-left: 4px; }
+  .qb { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+  .qb button { border: 1px solid var(--line); background: rgba(255,255,255,.07); border-radius: 99px; padding: 4px 11px; cursor: pointer; font-size: 11.5px; font-weight: 600; transition: .15s; }
+  .qb button:hover { background: rgba(255,255,255,.15); } .qb button.sem { color: var(--muted); }
+  .qb input { flex: 1; min-width: 96px; background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 99px; padding: 4px 11px; color: var(--text); font: inherit; font-size: 11.5px; outline: none; user-select: text; }
+  .qb input:focus { border-color: rgba(77,213,255,.55); } .qb input::placeholder { color: var(--faint); }
   .aviso { font-size: 11px; color: var(--ok); min-height: 15px; margin-top: 4px; padding-left: 4px; } .aviso.erro { color: var(--bad); }
 
   /* ---- hoje ---- */
@@ -173,6 +180,15 @@
     <button class="conc" id="btnConc" hidden></button>
     <div class="nova"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
       <input id="entrada" type="text" maxlength="300" autocomplete="off" spellcheck="false" aria-label="Nova tarefa" placeholder="Nova tarefa… ex.: revisar contrato para sexta urgente"></div>
+    <div class="quando" id="quando" hidden role="group" aria-label="Para quando?">
+      <div class="qq">Para quando? <small>opcional · Enter = sem data</small></div>
+      <div class="qb">
+        <button type="button" data-q="hoje">Hoje</button><button type="button" data-q="amanhã">Amanhã</button>
+        <button type="button" data-q="daqui a 7 dias">Em 1 semana</button>
+        <input id="qOutra" type="text" maxlength="40" autocomplete="off" spellcheck="false" aria-label="Outra data" placeholder="outra data: sexta, 25/12…">
+        <button type="button" class="sem" data-q="">Sem data</button>
+      </div>
+    </div>
     <div class="aviso" id="aviso" role="status"></div>
   </section>
 
@@ -291,13 +307,25 @@
   async function carregar() { try { dados = await get('/api/tarefas'); render(); } catch {} }
   async function concluir(t, row) { if (row) row.classList.add('feita'); await post('/api/tarefas/concluir', { id: t.id }); await carregar(); }
   async function remover(t) { await post('/api/tarefas/remover', { id: t.id }); avisar('Removida: ' + t.texto); await carregar(); }
-  async function adicionar() {
-    const e = $('entrada'), txt = e.value.trim(); if (!txt) return;
-    e.value = ''; const r = await post('/api/tarefas/adicionar', { texto: txt });
-    avisar(r.mensagem || 'Não entendi.', !r.ok); await carregar();
+  // "Para quando?": se a tarefa nao traz data, o servidor devolve `pergunta` e nada e criado ate voce escolher
+  // (hoje, amanha, 1 semana, outra data) ou dizer "sem data" (Enter). Tudo opcional.
+  let aguardando = null;
+  const fecharQuando = () => { aguardando = null; $('quando').hidden = true; $('qOutra').value = ''; };
+  async function adicionar(quando) {
+    const e = $('entrada'), txt = (aguardando ?? e.value).trim(); if (!txt) return;
+    const corpo = { texto: txt }; if (quando !== undefined) corpo.quando = quando;
+    const r = await post('/api/tarefas/adicionar', corpo);
+    if (r.pergunta) {
+      aguardando = txt; $('quando').hidden = false; if (r.erro) { avisar(r.mensagem, true); $('qOutra').focus(); } else $('qOutra').focus();
+      return;
+    }
+    fecharQuando(); e.value = ''; avisar(r.mensagem || 'Não entendi.', !r.ok); await carregar(); e.focus();
   }
+  $('entrada').addEventListener('input', fecharQuando);   // mudou o texto: a pergunta anterior nao vale mais
+  document.querySelectorAll('#quando [data-q]').forEach(b => b.onclick = () => adicionar(b.dataset.q));
+  $('qOutra').addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); adicionar($('qOutra').value.trim()); } });
   $('entrada').addEventListener('keydown', ev => {
-    if (ev.key === 'Enter') { ev.preventDefault(); adicionar(); }
+    if (ev.key === 'Enter') { ev.preventDefault(); adicionar(aguardando !== null ? '' : undefined); }
     if (ev.key === 'ArrowDown' && dados.abertas.length) { ev.preventDefault(); sel = 0; marcar(); $('entrada').blur(); }
   });
   $('btnMais').onclick = () => $('entrada').focus();
@@ -449,6 +477,7 @@
   addEventListener('blur', () => { if (focada && !pinned) setTimeout(() => { if (!document.hasFocus()) fechar(); }, 180); });
   document.addEventListener('keydown', ev => {
     const emEntrada = document.activeElement === $('entrada');
+    if (ev.key === 'Escape' && !$('quando').hidden) { fecharQuando(); $('entrada').focus(); return; }
     if (ev.key === 'Escape') { if (emEntrada && $('entrada').value) { $('entrada').value = ''; return; } if (pinned) { post('/api/painel/fechar'); } else fechar(); return; }
     if (!emEntrada && ev.key === '/') { ev.preventDefault(); $('entrada').focus(); return; }
     if (emEntrada) return;

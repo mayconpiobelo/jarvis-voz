@@ -159,6 +159,30 @@ def test_fluxo_de_tarefas_pelo_painel(srv):
     assert chamar(srv, "POST", "/api/tarefas/adicionar", {"texto": "   "})[1]["mensagem"] is None
 
 
+def test_painel_pergunta_para_quando_e_aceita_a_resposta(srv):
+    lista = jarvis.tarefas_lista()
+    lista.perguntar_prazo = True
+    try:
+        def abertas():
+            return {t["texto"]: t for t in chamar(srv, "GET", "/api/tarefas")[1]["abertas"]}
+
+        st, r = chamar(srv, "POST", "/api/tarefas/adicionar", {"texto": "comprar pão"})
+        assert st == 200 and r["pergunta"] is True and r["mensagem"] is None
+        assert "comprar pão" not in abertas()                                           # nada criado ate escolher
+        r = chamar(srv, "POST", "/api/tarefas/adicionar", {"texto": "comprar pão", "quando": "amanhã"})[1]
+        assert r["pergunta"] is False and r["mensagem"].startswith("Anotado")
+        assert abertas()["comprar pão"]["prazo"] == "2026-11-24"
+
+        r = chamar(srv, "POST", "/api/tarefas/adicionar", {"texto": "ligar fornecedor", "quando": ""})[1]   # sem data
+        assert r["pergunta"] is False and abertas()["ligar fornecedor"]["prazo"] is None
+
+        r = chamar(srv, "POST", "/api/tarefas/adicionar", {"texto": "pagar boleto", "quando": "blablabla xyz"})[1]
+        assert r["pergunta"] is True and r["erro"] is True and "Não entendi" in r["mensagem"]   # volta a perguntar
+        assert "pagar boleto" not in abertas()
+    finally:
+        lista.perguntar_prazo = False
+
+
 def test_comandos_digitados_funcionam_no_campo_do_painel(srv):
     chamar(srv, "POST", "/api/tarefas/adicionar", {"texto": "tarefa alfa"})
     r = chamar(srv, "POST", "/api/tarefas/adicionar", {"texto": "conclua a tarefa alfa"})[1]

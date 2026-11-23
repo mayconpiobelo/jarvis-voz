@@ -11,6 +11,7 @@ Tres formas de uso:
        python tarefas.py add "texto" [--prazo AAAA-MM-DD] [--prio alta|media|baixa] [--tag x]
        python tarefas.py list [--todas]      python tarefas.py done REF
        python tarefas.py remove REF          python tarefas.py undo       python tarefas.py md
+       python tarefas.py prazo REF AAAA-MM-DD|nenhum     (define ou limpa o prazo de uma tarefa)
      REF = numero na lista de abertas (como o Jarvis fala) ou um trecho do texto da tarefa.
 
 So usa a biblioteca padrao do Python.
@@ -31,6 +32,9 @@ BASE = Path(__file__).resolve().parent
 PRIO_ORDEM = {"alta": 0, "media": 1, "baixa": 2}
 DIAS_SEMANA = {"segunda": 0, "terca": 1, "quarta": 2, "quinta": 3, "sexta": 4, "sabado": 5, "domingo": 6}
 NOMES_DIA = ["segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
+MESES = {"janeiro": 1, "fevereiro": 2, "marco": 3, "abril": 4, "maio": 5, "junho": 6, "julho": 7, "agosto": 8,
+         "setembro": 9, "outubro": 10, "novembro": 11, "dezembro": 12}
+PERGUNTA_PRAZO_TTL = 60  # segundos que o Jarvis espera a resposta de "para quando?"
 NUMEROS = {"um": 1, "uma": 1, "primeira": 1, "primeiro": 1, "dois": 2, "duas": 2, "segunda": 2, "segundo": 2,
            "tres": 3, "terceira": 3, "terceiro": 3, "quatro": 4, "quarta": 4, "quarto": 4, "cinco": 5,
            "quinta": 5, "quinto": 5, "seis": 6, "sexta": 6, "sexto": 6, "sete": 7, "setima": 7, "oito": 8,
@@ -50,10 +54,13 @@ def _limpa(texto: str) -> str:
 
 # ------------------------------------------------------------------ armazenamento
 class Tarefas:
-    def __init__(self, arquivo: Path, md: Path | None = None, agora: Callable[[], datetime] = datetime.now):
+    def __init__(self, arquivo: Path, md: Path | None = None, agora: Callable[[], datetime] = datetime.now,
+                 perguntar_prazo: bool = False):
         self.arquivo = Path(arquivo)
         self.md = Path(md) if md else None
         self.agora = agora
+        self.perguntar_prazo = perguntar_prazo  # ao criar tarefa sem data, pergunta "para quando?" (opcional responder)
+        self.pendente_prazo: tuple[int, datetime] | None = None  # (id da tarefa, ate quando aceita a resposta)
 
     # -- leitura/gravacao (atomica, com uma copia para "desfazer")
     def _ler(self) -> dict:
@@ -153,6 +160,18 @@ class Tarefas:
                 return t
         raise KeyError(tarefa["id"])
 
+    def definir_prazo(self, tarefa_id: int, prazo: str | None) -> dict | None:
+        """Define (AAAA-MM-DD) ou limpa (None) o prazo de uma tarefa aberta; None se ela nao existe mais."""
+        if prazo:
+            date.fromisoformat(prazo)
+        dados = self._ler()
+        for t in dados["tarefas"]:
+            if t["id"] == tarefa_id and t["status"] == "aberta":
+                t["prazo"], t["atualizada"] = prazo or None, self.agora().isoformat(timespec="seconds")
+                self._gravar(dados)
+                return t
+        return None
+
     def concluir(self, tarefa: dict) -> dict:
         return self._mudar(tarefa, "concluida")
 
@@ -230,32 +249,111 @@ def extrair_prazo_prioridade(texto: str, hoje: date) -> tuple[str, str | None, s
         prio = "alta"
     elif tira(r"\s(?:com\s+)?(?:prioridade\s+baixa|baixa\s+prioridade)\b"):
         prio = "baixa"
-    m = tira(r"\s(?:para|pra|at[ée]|prazo)\s+(?:o\s+)?(depois\s+de\s+amanh[ãa]|amanh[ãa]|hoje)\b")
+    # datas por extenso/numericas e "semana que vem" (antes de "dia N", para "dia 25 de dezembro" nao virar "dia 25")
+    m = tira(r"\s(?:para|pra|at[ée]|prazo)\s+(?:o\s+)?(?:dia\s+)?(\d{1,2})\s*/\s*(\d{1,2})(?:\s*/\s*(\d{2,4}))?(?!\d)")
     if m:
-        k = norm(m.group(1))
-        prazo = (hoje + timedelta(days={"hoje": 0, "amanha": 1}.get(k, 2))).isoformat()
+        prazo = _data_dm(int(m.group(1)), int(m.group(2)), m.group(3), hoje)
     else:
-        m = tira(r"\s(?:para|pra|at[ée]|prazo)\s+(?:o\s+dia\s+|dia\s+)(\d{1,2})\b")
+        m = tira(r"\s(?:para|pra|at[ée]|prazo)\s+(?:o\s+)?(?:dia\s+)?(\d{1,2})\s+de\s+"
+                 r"(janeiro|fevereiro|mar[çc]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b")
         if m:
-            dia = int(m.group(1))
-            if 1 <= dia <= 31:
-                ano, mes = hoje.year, hoje.month
-                for _ in range(3):
-                    try:
-                        cand = date(ano, mes, dia)
-                    except ValueError:
-                        cand = None
-                    if cand and cand >= hoje:
-                        prazo = cand.isoformat()
-                        break
-                    mes, ano = (1, ano + 1) if mes == 12 else (mes + 1, ano)
+            prazo = _data_dm(int(m.group(1)), MESES[norm(m.group(2))], None, hoje)
+        elif tira(r"\s(?:para|pra|at[ée]|prazo)\s+(?:a\s+)?(?:semana\s+que\s+vem|pr[óo]xima\s+semana)\b"):
+            prazo = (hoje + timedelta(days=7 - hoje.weekday())).isoformat()  # segunda-feira da semana seguinte
+    if prazo is None:
+        m = tira(r"\s(?:para|pra|at[ée]|prazo)\s+(?:o\s+)?(depois\s+de\s+amanh[ãa]|amanh[ãa]|hoje)\b")
+        if m:
+            k = norm(m.group(1))
+            prazo = (hoje + timedelta(days={"hoje": 0, "amanha": 1}.get(k, 2))).isoformat()
         else:
-            m = tira(r"\s(?:para|pra|at[ée]|prazo)\s+(?:a\s+|o\s+)?(segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo)(?:-feira)?\b")
+            m = tira(r"\s(?:para|pra|at[ée]|prazo)\s+(?:o\s+dia\s+|dia\s+)(\d{1,2})\b")
             if m:
-                alvo = DIAS_SEMANA[norm(m.group(1))]
-                dias = (alvo - hoje.weekday()) % 7 or 7
-                prazo = (hoje + timedelta(days=dias)).isoformat()
+                dia = int(m.group(1))
+                if 1 <= dia <= 31:
+                    ano, mes = hoje.year, hoje.month
+                    for _ in range(3):
+                        try:
+                            cand = date(ano, mes, dia)
+                        except ValueError:
+                            cand = None
+                        if cand and cand >= hoje:
+                            prazo = cand.isoformat()
+                            break
+                        mes, ano = (1, ano + 1) if mes == 12 else (mes + 1, ano)
+            else:
+                m = tira(r"\s(?:para|pra|at[ée]|prazo)\s+(?:a\s+|o\s+)?(segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo)(?:-feira)?\b")
+                if m:
+                    alvo = DIAS_SEMANA[norm(m.group(1))]
+                    dias = (alvo - hoje.weekday()) % 7 or 7
+                    prazo = (hoje + timedelta(days=dias)).isoformat()
     return _limpa(t), prazo, prio
+
+
+def _data_dm(dia: int, mes: int, ano: str | None, hoje: date) -> str | None:
+    """dia/mes (e ano opcional) -> AAAA-MM-DD; sem ano, a proxima ocorrencia a partir de hoje."""
+    try:
+        if ano:
+            a = int(ano)
+            return date(a + 2000 if a < 100 else a, mes, dia).isoformat()
+        for a in (hoje.year, hoje.year + 1):
+            try:
+                cand = date(a, mes, dia)
+            except ValueError:
+                continue
+            if cand >= hoje:
+                return cand.isoformat()
+    except ValueError:
+        pass
+    return None
+
+
+_SEM_DATA = re.compile(r"\b(?:sem\s+(?:data|prazo)|nao\s+(?:precisa|tem|quero)|nenhuma?|tanto\s+faz|qualquer\s+(?:dia|data)|"
+                       r"deixa\s+assim|sem|nao|depois)\b")
+
+
+def interpretar_prazo(texto: str, hoje: date) -> tuple[str, str | None] | None:
+    """Resposta a "para quando?": ("data", AAAA-MM-DD), ("sem", None) ou None (nao e uma resposta de data)."""
+    t = norm(texto)
+    if not t or len(t.split()) > 9:
+        return None
+    m = re.search(r"(?<!\d)(\d{1,2})\s*/\s*(\d{1,2})(?:\s*/\s*(\d{2,4}))?(?!\d)", texto)  # "25/12" (norm tira a barra)
+    if m:
+        d = _data_dm(int(m.group(1)), int(m.group(2)), m.group(3), hoje)
+        return ("data", d) if d else None
+    t = re.sub(r"^(?:e\s+|eh\s+|seria\s+|sera\s+|pode\s+ser\s+|coloca\s+|marca\s+|bota\s+)?(?:para\s+|pra\s+|ate\s+)?(?:o\s+|a\s+)?", "", t)
+    if re.fullmatch(r"\d{1,2}", t):
+        t = "dia " + t
+    m = re.search(r"\b(?:daqui\s+a|em)\s+(\d+|" + "|".join(NUMEROS) + r")\s+(dias?|semanas?)\b", t)
+    if m:
+        n = int(m.group(1)) if m.group(1).isdigit() else NUMEROS[m.group(1)]
+        return "data", (hoje + timedelta(days=n * (7 if m.group(2).startswith("semana") else 1))).isoformat()
+    _, prazo, _ = extrair_prazo_prioridade("x para " + t, hoje)
+    if prazo:
+        return "data", prazo
+    if _SEM_DATA.search(t):
+        return "sem", None
+    return None
+
+
+def responder_prazo(texto: str, lista: Tarefas) -> str | None:
+    """Se o Jarvis acabou de perguntar "para quando?", trata a resposta; senao None (segue o fluxo normal).
+    A pergunta vale uma unica fala: qualquer outra coisa dita depois a cancela."""
+    p, lista.pendente_prazo = lista.pendente_prazo, None
+    if not p:
+        return None
+    tid, ate = p
+    agora = lista.agora()
+    if agora > ate:
+        return None
+    r = interpretar_prazo(texto, agora.date())
+    if r is None:
+        return None
+    if r[0] == "sem":
+        return "Certo, senhor, sem data."
+    t = lista.definir_prazo(tid, r[1])
+    if not t:
+        return None
+    return f"Combinado, senhor: {t['texto']}{_fala_prazo(r[1], agora.date())}."
 
 
 def _fala_prazo(prazo: str | None, hoje: date) -> str:
@@ -272,6 +370,26 @@ def _fala_prazo(prazo: str | None, hoje: date) -> str:
     return f", para o dia {d.day}"
 
 
+def _adicao(t: str) -> tuple[str, str]:
+    """Frase de "anote/insira/adicione ... tarefa" -> ("ok", texto da tarefa); ("plural", _) se for varias/ditado longo
+    (quem interpreta e o Claude); ("nao", _) se nao for pedido de adicionar."""
+    m = _ADD.match(t)
+    if not m:
+        return "nao", ""
+    v, resto = norm(m.group("v")), m.group("resto")
+    menciona = bool(re.search(r"\b(tarefas?|lista)\b", norm(resto)))
+    explicito = v in ("insira", "insere", "inserir", "anote", "anota", "anotar")
+    # "adicione/crie/registre/coloque ..." so valem quando a frase fala de tarefa ou lista
+    # (senao pode ser outro pedido, como "crie um rascunho de e-mail": segue para o Claude)
+    if not (explicito or menciona):
+        return "nao", ""
+    if _PLURAL.match(resto) or len(resto) > 220:
+        return "plural", ""
+    resto = _PRE_LISTA.sub("", resto)
+    resto = _PRE_TAREFA.sub("", resto)
+    return "ok", _SUF_LISTA.sub("", resto)
+
+
 def responder(texto: str, lista: Tarefas) -> str | None:
     """Se a frase for um comando de tarefas, executa e devolve a fala do Jarvis; senao None (segue para o Claude)."""
     t = texto.strip()
@@ -283,27 +401,21 @@ def responder(texto: str, lista: Tarefas) -> str | None:
     if _UNDO.match(t) and ("ultima" in tn or "alteracao" in tn or "acao" in tn or len(tn.split()) <= 3):
         return "Desfeito, senhor." if lista.desfazer() else "Não há nada para desfazer, senhor."
 
-    m = _ADD.match(t)
-    if m:
-        v, resto = norm(m.group("v")), m.group("resto")
-        menciona = bool(re.search(r"\b(tarefas?|lista)\b", norm(resto)))
-        explicito = v in ("insira", "insere", "inserir", "anote", "anota", "anotar")
-        # "adicione/crie/registre/coloque ..." so valem quando a frase fala de tarefa ou lista
-        # (senao pode ser outro pedido, como "crie um rascunho de e-mail": segue para o Claude)
-        if explicito or menciona:
-            # varias tarefas de uma vez ("crie duas tarefas: A e B") ou um paragrafo ditado: quem interpreta e o Claude
-            if _PLURAL.match(resto) or len(resto) > 220:
-                return None
-            resto = _PRE_LISTA.sub("", resto)
-            resto = _PRE_TAREFA.sub("", resto)
-            resto = _SUF_LISTA.sub("", resto)
-            texto_t, prazo, prio = extrair_prazo_prioridade(resto, hoje)
-            if not texto_t:
-                return "Qual é a tarefa, senhor?"
-            tarefa, criada = lista.adicionar(texto_t, prazo=prazo, prioridade=prio)
-            if not criada:
-                return f"Já consta na lista, senhor: {tarefa['texto']}."
-            return f"Anotado, senhor: {tarefa['texto']}{_fala_prazo(tarefa['prazo'], hoje)}."
+    tipo, resto = _adicao(t)
+    if tipo == "plural":
+        return None
+    if tipo == "ok":
+        texto_t, prazo, prio = extrair_prazo_prioridade(resto, hoje)
+        if not texto_t:
+            return "Qual é a tarefa, senhor?"
+        tarefa, criada = lista.adicionar(texto_t, prazo=prazo, prioridade=prio)
+        if not criada:
+            return f"Já consta na lista, senhor: {tarefa['texto']}."
+        fala = f"Anotado, senhor: {tarefa['texto']}{_fala_prazo(tarefa['prazo'], hoje)}."
+        if not tarefa["prazo"] and lista.perguntar_prazo:  # opcional: pode dizer a data ou "sem data"
+            lista.pendente_prazo = (tarefa["id"], lista.agora() + timedelta(seconds=PERGUNTA_PRAZO_TTL))
+            fala += " Para quando? Pode dizer a data, ou sem data."
+        return fala
 
     for padrao, acao in ((_DONE, "concluir"), (_REM, "remover")):
         m = padrao.match(t)
@@ -350,16 +462,29 @@ def adicionar_livre(lista: Tarefas, texto: str, origem: str = "painel") -> tuple
     return lista.adicionar(limpo, prazo=prazo, prioridade=prio, origem=origem)
 
 
-def entrada_do_painel(lista: Tarefas, texto: str) -> tuple[str | None, bool]:
+def entrada_do_painel(lista: Tarefas, texto: str, prazo: str | None = None) -> tuple[str | None, bool, bool]:
     """Campo 'Nova tarefa': aceita tambem os comandos de voz digitados ('conclua a tarefa 2').
-    Devolve (frase para mostrar, mudou_algo)."""
-    fala = responder(texto, lista)
-    if fala is not None:
-        return fala, True
-    t, criada = adicionar_livre(lista, texto)
-    if t is None:
-        return None, False
-    return (f"Anotado: {t['texto']}" if criada else f"Já consta na lista: {t['texto']}"), criada
+    `prazo`: None = o usuario ainda nao escolheu; "" = escolheu "sem data"; AAAA-MM-DD = escolheu essa data.
+    Devolve (frase para mostrar, mudou_algo, perguntar_prazo): quando a tarefa nao traz data e ainda nao houve
+    escolha, nada e criado e o painel mostra as opcoes de prazo (que sao opcionais)."""
+    t = _limpa(texto)
+    if not t:
+        return None, False, False
+    tipo, base = _adicao(t)
+    if tipo != "ok":
+        fala = responder(t, lista)
+        if fala is not None:
+            return fala, True, False
+        base = t
+    limpo, prazo_texto, prio = extrair_prazo_prioridade(base, lista.agora().date())
+    if not limpo:
+        return None, False, False
+    if prazo is None:
+        if prazo_texto is None and lista.perguntar_prazo:
+            return None, False, True
+        prazo = prazo_texto
+    tarefa, criada = lista.adicionar(limpo, prazo=prazo or None, prioridade=prio, origem="painel")
+    return (f"Anotado: {tarefa['texto']}" if criada else f"Já consta na lista: {tarefa['texto']}"), criada, False
 
 
 # ------------------------------------------------------------------ linha de comando
@@ -377,7 +502,8 @@ def lista_padrao() -> Tarefas:
         q = Path(os.path.expandvars(os.path.expanduser(p)))
         return q if q.is_absolute() else BASE / q
 
-    return Tarefas(caminho(c.get("arquivo", "tarefas.json")), caminho(c.get("md", "TAREFAS.md")))
+    return Tarefas(caminho(c.get("arquivo", "tarefas.json")), caminho(c.get("md", "TAREFAS.md")),
+                   perguntar_prazo=bool(c.get("perguntar_prazo", True)))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -388,6 +514,7 @@ def main(argv: list[str] | None = None) -> int:
     ls = sub.add_parser("list"); ls.add_argument("--todas", action="store_true")
     for nome in ("done", "remove"):
         s = sub.add_parser(nome); s.add_argument("ref")
+    pz = sub.add_parser("prazo"); pz.add_argument("ref"); pz.add_argument("data", help="AAAA-MM-DD ou 'nenhum'")
     sub.add_parser("undo"); sub.add_parser("md")
     args = ap.parse_args(argv)
     lista = lista_padrao()
@@ -410,6 +537,13 @@ def main(argv: list[str] | None = None) -> int:
             out({"ok": False, "erro": "nenhuma tarefa" if not c else "ambiguo", "candidatas": [x["texto"] for x in c]})
             return 1
         out({"ok": True, "tarefa": (lista.concluir if args.cmd == "done" else lista.remover)(c[0])})
+    elif args.cmd == "prazo":
+        c = lista.resolver(args.ref)
+        if len(c) != 1:
+            out({"ok": False, "erro": "nenhuma tarefa" if not c else "ambiguo", "candidatas": [x["texto"] for x in c]})
+            return 1
+        nova = None if norm(args.data) in ("nenhum", "nenhuma", "sem data", "limpar") else args.data
+        out({"ok": True, "tarefa": lista.definir_prazo(c[0]["id"], nova)})
     elif args.cmd == "undo":
         out({"ok": lista.desfazer()})
     elif args.cmd == "md":

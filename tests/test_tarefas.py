@@ -184,8 +184,8 @@ def test_markdown_gerado(lista, tmp_path):
 
 
 def test_painel_texto_livre_vira_tarefa_com_prazo_e_prioridade(lista):
-    msg, mudou = tarefas.entrada_do_painel(lista, "revisar contrato para sexta urgente")
-    assert mudou and msg.startswith("Anotado: revisar contrato")
+    msg, mudou, pergunta = tarefas.entrada_do_painel(lista, "revisar contrato para sexta urgente")
+    assert mudou and not pergunta and msg.startswith("Anotado: revisar contrato")
     t = lista.abertas()[0]
     assert t["prazo"] == "2026-11-27" and t["prioridade"] == "alta" and t["origem"] == "painel"
 
@@ -193,11 +193,121 @@ def test_painel_texto_livre_vira_tarefa_com_prazo_e_prioridade(lista):
 def test_painel_aceita_comandos_digitados(lista):
     tarefas.entrada_do_painel(lista, "alfa")
     tarefas.entrada_do_painel(lista, "beta")
-    msg, mudou = tarefas.entrada_do_painel(lista, "conclua a tarefa 1")
+    msg, mudou, _ = tarefas.entrada_do_painel(lista, "conclua a tarefa 1")
     assert mudou and msg.startswith("Concluída, senhor:")
     assert [t["texto"] for t in lista.abertas()] == ["beta"]
-    assert tarefas.entrada_do_painel(lista, "   ") == (None, False)
-    assert tarefas.entrada_do_painel(lista, "beta") [1] is False       # duplicada nao cria
+    assert tarefas.entrada_do_painel(lista, "   ") == (None, False, False)
+    assert tarefas.entrada_do_painel(lista, "beta")[1] is False       # duplicada nao cria
+
+
+# ---- "para quando?": opcional, na voz e no painel
+@pytest.fixture()
+def lista_pergunta(tmp_path):
+    relogio = {"agora": HOJE}
+    lst = tarefas.Tarefas(tmp_path / "tarefas.json", agora=lambda: relogio["agora"], perguntar_prazo=True)
+    lst.relogio = relogio
+    return lst
+
+
+def test_voz_sem_data_pergunta_para_quando_e_aceita_a_resposta(lista_pergunta):
+    r = falar(lista_pergunta, "Jarvis insira: atualizar workload geral na lista de tarefas")
+    assert r.startswith("Anotado, senhor: atualizar workload geral.") and "Para quando?" in r
+    assert tarefas.responder_prazo("sexta", lista_pergunta) == "Combinado, senhor: atualizar workload geral, para sexta."
+    assert lista_pergunta.abertas()[0]["prazo"] == "2026-11-27"
+    assert lista_pergunta.pendente_prazo is None
+
+
+def test_voz_com_data_na_frase_nao_pergunta(lista_pergunta):
+    r = falar(lista_pergunta, "insira: revisar contrato para amanhã")
+    assert "Para quando?" not in r and lista_pergunta.pendente_prazo is None
+
+
+def test_resposta_sem_data_deixa_a_tarefa_sem_prazo(lista_pergunta):
+    falar(lista_pergunta, "anote: ligar para o fornecedor")
+    assert tarefas.responder_prazo("sem data", lista_pergunta) == "Certo, senhor, sem data."
+    assert lista_pergunta.abertas()[0]["prazo"] is None
+
+
+def test_outra_fala_cancela_a_pergunta_e_segue_o_fluxo_normal(lista_pergunta):
+    falar(lista_pergunta, "anote: ligar para o fornecedor")
+    assert tarefas.responder_prazo("qual a previsão do tempo", lista_pergunta) is None   # nao e data: vai para o resto
+    assert lista_pergunta.pendente_prazo is None
+    assert tarefas.responder_prazo("amanhã", lista_pergunta) is None                      # a pergunta valia uma fala so
+    assert lista_pergunta.abertas()[0]["prazo"] is None
+
+
+def test_pergunta_expira(lista_pergunta):
+    falar(lista_pergunta, "anote: ligar para o fornecedor")
+    lista_pergunta.relogio["agora"] = HOJE + tarefas.timedelta(seconds=tarefas.PERGUNTA_PRAZO_TTL + 5)
+    assert tarefas.responder_prazo("amanhã", lista_pergunta) is None
+    assert lista_pergunta.abertas()[0]["prazo"] is None
+
+
+def test_pergunta_desligada_por_config(lista):  # `lista` usa perguntar_prazo=False
+    assert "Para quando?" not in falar(lista, "anote: ligar para o fornecedor")
+
+
+def test_nao_pergunta_em_tarefa_repetida(lista_pergunta):
+    falar(lista_pergunta, "anote: ligar para o fornecedor")
+    lista_pergunta.pendente_prazo = None
+    assert "Já consta" in falar(lista_pergunta, "anote: ligar para o fornecedor")
+    assert lista_pergunta.pendente_prazo is None
+
+
+@pytest.mark.parametrize("fala,esperado", [
+    ("amanhã", ("data", "2026-11-24")), ("Para sexta-feira.", ("data", "2026-11-27")), ("dia 25", ("data", "2026-11-25")),
+    ("25", ("data", "2026-11-25")), ("25 de dezembro", ("data", "2026-12-25")), ("25/12", ("data", "2026-12-25")),
+    ("05/03/27", ("data", "2027-03-05")), ("semana que vem", ("data", "2026-11-30")),
+    ("daqui a 3 dias", ("data", "2026-11-26")), ("em duas semanas", ("data", "2026-12-07")), ("depois de amanhã", ("data", "2026-11-25")),
+    ("sem data", ("sem", None)), ("não precisa", ("sem", None)), ("tanto faz", ("sem", None)),
+    ("qual a previsão do tempo", None), ("abre o spotify e toca algo legal", None), ("", None), ("31/02", None),
+])
+def test_interpretar_prazo(fala, esperado):
+    assert tarefas.interpretar_prazo(fala, HOJE.date()) == esperado
+
+
+def test_datas_numericas_e_por_extenso_na_frase():
+    h = HOJE.date()
+    assert tarefas.extrair_prazo_prioridade("revisar contrato para 25/12", h)[:2] == ("revisar contrato", "2026-12-25")
+    assert tarefas.extrair_prazo_prioridade("ligar para dia 25 de dezembro urgente", h) == ("ligar", "2026-12-25", "alta")
+    assert tarefas.extrair_prazo_prioridade("planejar para semana que vem", h)[:2] == ("planejar", "2026-11-30")
+    assert tarefas.extrair_prazo_prioridade("pagar boleto para dia 25", h)[1] == "2026-11-25"
+
+
+def test_painel_pergunta_prazo_e_nao_cria_ate_escolher(lista_pergunta):
+    assert tarefas.entrada_do_painel(lista_pergunta, "comprar pão") == (None, False, True)
+    assert lista_pergunta.abertas() == []                                                  # nada criado ainda
+    msg, mudou, pergunta = tarefas.entrada_do_painel(lista_pergunta, "comprar pão", prazo="2026-11-25")
+    assert mudou and not pergunta and lista_pergunta.abertas()[0]["prazo"] == "2026-11-25"
+
+
+def test_painel_sem_data_e_opcional(lista_pergunta):
+    msg, mudou, pergunta = tarefas.entrada_do_painel(lista_pergunta, "comprar pão", prazo="")
+    assert mudou and not pergunta and lista_pergunta.abertas()[0]["prazo"] is None
+
+
+def test_painel_nao_pergunta_se_o_texto_ja_tem_data_ou_e_comando(lista_pergunta):
+    assert tarefas.entrada_do_painel(lista_pergunta, "comprar pão para sexta")[2] is False
+    assert tarefas.entrada_do_painel(lista_pergunta, "anote: ligar fornecedor para amanhã")[2] is False
+    assert tarefas.entrada_do_painel(lista_pergunta, "conclua a tarefa 1")[2] is False
+    assert tarefas.entrada_do_painel(lista_pergunta, "desfazer")[2] is False
+
+
+def test_painel_anote_digitado_pergunta_o_prazo_sem_criar_pela_voz(lista_pergunta):
+    assert tarefas.entrada_do_painel(lista_pergunta, "anote: comprar pão") == (None, False, True)
+    assert lista_pergunta.pendente_prazo is None                                           # pergunta do painel nao e a da voz
+
+
+def test_definir_prazo_e_cli(tmp_path, monkeypatch, capsys):
+    lst = tarefas.Tarefas(tmp_path / "t.json", agora=lambda: HOJE)
+    monkeypatch.setattr(tarefas, "lista_padrao", lambda: lst)
+    t, _ = lst.adicionar("revisar contrato")
+    assert lst.definir_prazo(t["id"], "2026-12-01")["prazo"] == "2026-12-01"
+    assert lst.definir_prazo(999, "2026-12-01") is None
+    assert tarefas.main(["prazo", "contrato", "nenhum"]) == 0 and lst.abertas()[0]["prazo"] is None
+    assert tarefas.main(["prazo", "contrato", "2026-12-05"]) == 0 and lst.abertas()[0]["prazo"] == "2026-12-05"
+    with pytest.raises(ValueError):
+        lst.definir_prazo(t["id"], "31/12/2026")
 
 
 def test_cli(tmp_path, monkeypatch, capsys):

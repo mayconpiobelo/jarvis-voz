@@ -36,7 +36,7 @@ Exemplo central: **“Jarvis, insira: atualizar workload geral na lista de taref
 | Intenção | Exemplos |
 |---|---|
 | **Adicionar** | “insira: *texto* na lista de tarefas” · “anote *texto*” · “adicione *texto* na lista de tarefas” · “crie uma tarefa: *texto*” |
-| **Prazo / prioridade** (dentro do texto) | “… para amanhã” · “… para sexta” · “… para o dia 5” · “… para hoje” · “… urgente” · “… prioridade baixa” |
+| **Prazo / prioridade** (dentro do texto) | “… para amanhã” · “… para sexta” · “… para o dia 5” · “… para 25/12” · “… para o dia 25 de dezembro” · “… para a semana que vem” · “… para hoje” · “… urgente” · “… prioridade baixa” |
 | **Listar** | “quais são as minhas tarefas” · “liste minhas tarefas” · “o que tenho pendente” |
 | **Concluir** | “conclua a tarefa 2” · “conclua a tarefa do workload” · “marque como feita a segunda tarefa” |
 | **Remover** | “remova a tarefa 1” · “apague a tarefa contrato” |
@@ -49,7 +49,15 @@ Regras de segurança do interpretador, para **não sequestrar outros pedidos**:
 - Resolução por trecho: ≥ 60 % das palavras relevantes do que você disse precisam aparecer na tarefa.
 
 ## Camada Claude (pedidos complexos)
-O Jarvis ensina o Claude a usar a mesma lista (trecho da persona): `python tarefas.py add "…" --prazo AAAA-MM-DD --prio alta`, `list`, `done REF`, `remove REF`, `undo`. Exemplos que ela cobre: *“crie três tarefas: revisar contrato, ligar para o fornecedor e fechar o mês”*, *“passe tudo que vence esta semana para a próxima”*. O Claude nunca edita o arquivo diretamente.
+O Jarvis ensina o Claude a usar a mesma lista (trecho da persona): `python tarefas.py add "…" --prazo AAAA-MM-DD --prio alta`, `prazo REF AAAA-MM-DD|nenhum`, `list`, `done REF`, `remove REF`, `undo`. Exemplos que ela cobre: *“crie três tarefas: revisar contrato, ligar para o fornecedor e fechar o mês”*, *“passe tudo que vence esta semana para a próxima”*. O Claude nunca edita o arquivo diretamente.
+
+## “Para quando?” (data opcional)
+Quando você cria uma tarefa **sem data**, o Jarvis pergunta para quando é — e responder é opcional.
+
+- **Por voz**: *“Jarvis, insira: ligar para o fornecedor”* → *“Anotado, senhor: ligar para o fornecedor. Para quando? Pode dizer a data, ou sem data.”* A tarefa já está salva. Aperte o atalho e responda em até 60 s: *“amanhã”*, *“sexta”*, *“dia 25”*, *“25 de dezembro”*, *“25/12”*, *“semana que vem”*, *“daqui a 3 dias”* → *“Combinado, senhor: …, para sexta.”* Ou diga *“sem data”* / *“não precisa”* (a tarefa fica sem prazo). Qualquer outra coisa que você disser cancela a pergunta e segue como um pedido normal. Se a frase já traz a data (*“… para amanhã”*), não pergunta.
+- **No painel**: ao digitar uma tarefa sem data e apertar Enter, aparecem as opções **Hoje · Amanhã · Em 1 semana · outra data (digite “sexta”, “25/12”…) · Sem data**. A tarefa só é criada quando você escolhe; **Enter de novo = sem data**, `Esc` volta ao texto.
+- Para desligar a pergunta: `"tarefas": {"perguntar_prazo": false}` no `config.json`.
+- O Claude, nos pedidos complexos, também termina com “Para quando?” ao criar tarefa sem data e usa `tarefas.py prazo` se você responder.
 
 ## Painel rápido
 `Ctrl+Alt+T` abre um painel flutuante com o widget **Tarefas**: contador, campo “Nova tarefa” (texto livre: *“revisar contrato para sexta urgente”* vira prazo e prioridade; também aceita os comandos de voz digitados, como *“conclua a tarefa 2”*), círculo para concluir, ✕ para remover, desfazer (`Ctrl+Z`) e lista de concluídas. O widget **Hoje** mostra quantas vencem hoje e quantas estão atrasadas.

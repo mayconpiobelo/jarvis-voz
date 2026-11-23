@@ -566,11 +566,24 @@ def tarefas_prompt() -> str:
     script = (BASE / "tarefas.py").as_posix()
     return (
         f' LISTA DE TAREFAS: a lista de tarefas do usuario e gerenciada pelo comando "{py}" "{script}" com as acoes '
-        'add "texto" [--prazo AAAA-MM-DD] [--prio alta|media|baixa], list, done REF, remove REF e undo '
-        "(REF = numero na lista de abertas ou um trecho do texto). Use SEMPRE esse comando para ler ou alterar "
-        "tarefas e nunca edite os arquivos de tarefas diretamente. Converta datas faladas para AAAA-MM-DD usando "
-        "a hora local informada e confirme em uma frase o que foi feito."
+        'add "texto" [--prazo AAAA-MM-DD] [--prio alta|media|baixa], prazo REF AAAA-MM-DD|nenhum, list, done REF, '
+        "remove REF e undo (REF = numero na lista de abertas ou um trecho do texto). Use SEMPRE esse comando para ler "
+        "ou alterar tarefas e nunca edite os arquivos de tarefas diretamente. Converta datas faladas para AAAA-MM-DD "
+        "usando a hora local informada e confirme em uma frase o que foi feito. Ao criar uma tarefa SEM data, termine "
+        "a resposta perguntando 'Para quando?' (responder e opcional: se o usuario disser a data, use o comando prazo; "
+        "se disser 'sem data', nao faca nada)."
     )
+
+
+def responder_prazo_pendente(texto: str) -> str | None:
+    """Resposta a "Para quando?" (perguntado ao anotar uma tarefa sem data). None = nao era resposta."""
+    try:
+        import tarefas
+
+        return tarefas.responder_prazo(texto, tarefas_lista())
+    except Exception:
+        log.exception("erro ao tratar a data da tarefa")
+        return None
 
 
 def responder_tarefas(texto: str) -> str | None:
@@ -619,6 +632,7 @@ def handle_text(text: str) -> None:
     low = text.lower().strip(" .!?")
     if low in {"cancelar", "cancela", "esquece", "deixa pra la", "deixa pra lá"}:
         _pending_until = 0.0
+        tarefas_lista().pendente_prazo = None
         speak("Cancelado, senhor.")
         return
     if low in {"nova conversa", "reiniciar conversa", "limpar conversa"}:
@@ -635,7 +649,9 @@ def handle_text(text: str) -> None:
         speak("Cancelado, senhor.")
         return
     if confirm is None:  # comandos de tarefas: resposta imediata, sem gastar uma chamada ao Claude
-        local, rotulo = responder_tarefas(text), "Lista de tarefas"
+        local, rotulo = responder_prazo_pendente(text), "Lista de tarefas"  # "Para quando?" acabou de ser perguntado?
+        if local is None:
+            local = responder_tarefas(text)
         if local is None:
             local, rotulo = responder_musica(text), "Música"
         if local is not None:
@@ -1066,10 +1082,22 @@ def start_history_server() -> None:
             if path == "/api/tarefas/adicionar":
                 import tarefas
 
-                msg, mudou = tarefas.entrada_do_painel(tarefas_lista(), str(corpo.get("texto", ""))[:300])
+                lista = tarefas_lista()
+                prazo, aviso = None, None  # prazo: None = ainda nao escolheu; "" = sem data; AAAA-MM-DD = essa data
+                if "quando" in corpo:  # resposta de "Para quando?": "amanha", "sexta", "25/12", "" (= sem data)...
+                    quando = str(corpo.get("quando") or "")[:40].strip()
+                    r = tarefas.interpretar_prazo(quando, lista.agora().date()) if quando else ("sem", None)
+                    if r is None:
+                        aviso = "Não entendi a data. Tente: amanhã, sexta, 25/12 ou sem data."
+                    else:
+                        prazo = r[1] or ""
+                if aviso:
+                    return self._send(200, json.dumps({"ok": True, "mensagem": aviso, "pergunta": True, "erro": True}, ensure_ascii=False).encode("utf-8"),
+                                      "application/json; charset=utf-8")
+                msg, mudou, pergunta = tarefas.entrada_do_painel(lista, str(corpo.get("texto", ""))[:300], prazo)
                 if mudou:
                     CURRENT["rev"] += 1
-                return self._send(200, json.dumps({"ok": True, "mensagem": msg}, ensure_ascii=False).encode("utf-8"),
+                return self._send(200, json.dumps({"ok": True, "mensagem": msg, "pergunta": pergunta}, ensure_ascii=False).encode("utf-8"),
                                   "application/json; charset=utf-8")
             if path == "/api/tarefas/remover":
                 try:
