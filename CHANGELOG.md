@@ -11,6 +11,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); 
 - Comandos de voz de música (“pausa a música”, “próxima música”, “o que está tocando”), com resposta imediata.
 - **Visual novo do painel**: degradê profundo, cartões em vidro, acento ciano-violeta; o Sistema virou barras dentro do Hoje.
 - Segundo atalho global e `esfera` mostrar/ocultar sem encerrar o app.
+- **Esfera multi-monitor**: a esfera flutuante aparece no canto da tela da janela em uso e acompanha quando você troca de monitor; o botão Esfera mostra a esfera por alguns segundos ao ligar.
 - **Painel móvel e redimensionável**: arraste pela barra de cima para mover e pelas bordas/cantos para mudar o tamanho (mínimo 420×380); o layout se reorganiza (duas colunas viram uma, com rolagem, em janelas estreitas) e o painel reabre onde você o deixou, mesmo em outro monitor. Se a tela guardada sumir, volta ao canto padrão. Duplo clique na barra, o botão ↺ ou o item “Restaurar posição do painel” da bandeja restauram posição e tamanho. Pequena animação de entrada.
 
 ## [0.1.0] — 2026-11-22

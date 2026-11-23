@@ -143,6 +143,57 @@ fn aplicar_geometria(app: &AppHandle, w: &WebviewWindow, estado: &EstadoPainel) 
     }
 }
 
+#[repr(C)]
+struct RectWin {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+}
+
+#[link(name = "user32")]
+extern "system" {
+    fn GetForegroundWindow() -> isize;
+    fn GetWindowRect(h: isize, r: *mut RectWin) -> i32;
+}
+
+/// Monitor onde esta a janela em uso agora (a que esta em primeiro plano), se der para saber.
+/// Janelas minimizadas (fora de qualquer tela) sao ignoradas.
+fn monitor_da_janela_ativa(app: &AppHandle) -> Option<tauri::Monitor> {
+    let mut r = RectWin { left: 0, top: 0, right: 0, bottom: 0 };
+    // SAFETY: chamadas simples da API do Windows; `r` vive durante a chamada.
+    let ok = unsafe {
+        let h = GetForegroundWindow();
+        h != 0 && GetWindowRect(h, &mut r) != 0
+    };
+    if !ok || r.right <= r.left || r.bottom <= r.top {
+        return None;
+    }
+    let (cx, cy) = ((r.left as f64 + r.right as f64) / 2.0, (r.top as f64 + r.bottom as f64) / 2.0);
+    app.monitor_from_point(cx, cy).ok().flatten()
+}
+
+/// Leva a esfera para o canto do monitor dado (area util, sem a barra de tarefas).
+fn posicionar_esfera(w: &WebviewWindow, m: &tauri::Monitor, canto: &str, lado: f64, margem: f64) {
+    let esc = m.scale_factor();
+    let area = m.work_area();
+    let lado_px = (lado * esc) as i32;
+    let mg = (margem * esc) as i32;
+    let (ax, ay) = (area.position.x, area.position.y);
+    let (aw, ah) = (area.size.width as i32, area.size.height as i32);
+    let (x, y) = match canto {
+        "bl" => (ax + mg, ay + ah - lado_px - mg),
+        "tr" => (ax + aw - lado_px - mg, ay + mg),
+        "tl" => (ax + mg, ay + mg),
+        "c" => (ax + (aw - lado_px) / 2, ay + (ah - lado_px) / 2),
+        _ => (ax + aw - lado_px - mg, ay + ah - lado_px - mg), // br
+    };
+    // posiciona, ajusta o tamanho na escala do novo monitor e posiciona de novo
+    let _ = w.set_position(PhysicalPosition::new(x, y));
+    let _ = w.set_size(LogicalSize::new(lado, lado));
+    let _ = w.set_position(PhysicalPosition::new(x, y));
+}
+
 fn arg(nome: &str) -> Option<String> {
     let a: Vec<String> = std::env::args().collect();
     a.iter().position(|x| x == nome).and_then(|i| a.get(i + 1).cloned())
@@ -199,23 +250,26 @@ fn main() {
             let _ = janela.set_skip_taskbar(true);
             let _ = janela.set_size(LogicalSize::new(lado, lado));
 
-            // Posiciona dentro da area util do monitor (descontando a barra de tarefas).
-            if let Ok(Some(m)) = janela.current_monitor() {
-                let esc = m.scale_factor();
-                let area = m.work_area();
-                let w = (lado * esc) as i32;
-                let mg = (margem * esc) as i32;
-                let (ax, ay) = (area.position.x, area.position.y);
-                let (aw, ah) = (area.size.width as i32, area.size.height as i32);
-                let (x, y) = match canto.as_str() {
-                    "bl" => (ax + mg, ay + ah - w - mg),
-                    "tr" => (ax + aw - w - mg, ay + mg),
-                    "tl" => (ax + mg, ay + mg),
-                    "c" => (ax + (aw - w) / 2, ay + (ah - w) / 2),
-                    _ => (ax + aw - w - mg, ay + ah - w - mg), // br
-                };
-                let _ = janela.set_position(PhysicalPosition::new(x, y));
+            // A esfera aparece na tela onde voce esta trabalhando (a da janela em primeiro plano), no canto
+            // pedido; se voce passa para outra tela, ela vai junto. Sem janela ativa, usa o monitor atual.
+            let app_e = app.handle().clone();
+            let esfera = janela.clone();
+            let canto_e = canto.clone();
+            if let Some(m) = monitor_da_janela_ativa(&app_e).or_else(|| janela.current_monitor().ok().flatten()) {
+                posicionar_esfera(&janela, &m, &canto_e, lado, margem);
             }
+            std::thread::spawn(move || {
+                let mut atual: Option<(i32, i32)> = esfera.current_monitor().ok().flatten().map(|m| (m.position().x, m.position().y));
+                loop {
+                    std::thread::sleep(Duration::from_millis(350));
+                    let Some(m) = monitor_da_janela_ativa(&app_e) else { continue };
+                    let pos = (m.position().x, m.position().y);
+                    if atual != Some(pos) {
+                        posicionar_esfera(&esfera, &m, &canto_e, lado, margem);
+                        atual = Some(pos);
+                    }
+                }
+            });
 
             // Espera o Jarvis (jarvis.py) subir e so entao carrega a esfera; assim iniciar
             // o overlay antes do servico nao deixa uma tela de erro.
