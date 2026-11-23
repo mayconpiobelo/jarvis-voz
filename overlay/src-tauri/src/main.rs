@@ -189,6 +189,21 @@ fn monitor_da_janela_ativa(app: &AppHandle) -> Option<tauri::Monitor> {
     app.monitor_from_point(cx, cy).ok().flatten()
 }
 
+/// Monitor onde o painel esta, se ele estiver aberto (a esfera fica na mesma tela do painel).
+fn monitor_do_painel(app: &AppHandle) -> Option<tauri::Monitor> {
+    let painel = app.get_webview_window("painel")?;
+    if !painel.is_visible().ok()? {
+        return None;
+    }
+    let (p, t) = (painel.outer_position().ok()?, painel.outer_size().ok()?);
+    app.monitor_from_point(p.x as f64 + t.width as f64 / 2.0, p.y as f64 + t.height as f64 / 2.0).ok().flatten()
+}
+
+/// Onde a esfera deve ficar: na tela do painel (se aberto); senao na da janela em uso.
+fn monitor_alvo(app: &AppHandle) -> Option<tauri::Monitor> {
+    monitor_do_painel(app).or_else(|| monitor_da_janela_ativa(app))
+}
+
 /// Leva a esfera para o canto do monitor dado (area util, sem a barra de tarefas).
 fn posicionar_esfera(w: &WebviewWindow, m: &tauri::Monitor, canto: &str, lado: f64, margem: f64) {
     let esc = m.scale_factor();
@@ -271,14 +286,14 @@ fn main() {
             let app_e = app.handle().clone();
             let esfera = janela.clone();
             let canto_e = canto.clone();
-            if let Some(m) = monitor_da_janela_ativa(&app_e).or_else(|| janela.current_monitor().ok().flatten()) {
+            if let Some(m) = monitor_alvo(&app_e).or_else(|| janela.current_monitor().ok().flatten()) {
                 posicionar_esfera(&janela, &m, &canto_e, lado, margem);
             }
             std::thread::spawn(move || {
                 let mut atual: Option<(i32, i32)> = esfera.current_monitor().ok().flatten().map(|m| (m.position().x, m.position().y));
                 loop {
                     std::thread::sleep(Duration::from_millis(350));
-                    let Some(m) = monitor_da_janela_ativa(&app_e) else { continue };
+                    let Some(m) = monitor_alvo(&app_e) else { continue };
                     let pos = (m.position().x, m.position().y);
                     if atual != Some(pos) {
                         posicionar_esfera(&esfera, &m, &canto_e, lado, margem);
