@@ -71,17 +71,40 @@ def save_state(state: dict) -> None:
 _ultimo_disp: dict[str, object] = {}
 
 
-def _lista_dispositivos(recarregar: bool = False):
-    """(dispositivos, apis, padrao_entrada, padrao_saida). `recarregar` relê o hardware: o PortAudio guarda a
-    lista do momento em que iniciou e nao percebe fone ligado/desligado sozinho."""
+_audio_hw_lock = threading.Lock()
+_hw_relido_em = 0.0
+
+
+def atualizar_hardware_de_audio(forcar: bool = False) -> None:
+    """Relê os dispositivos de som. O PortAudio guarda a lista do momento em que iniciou: se o padrao do Windows
+    mudou (fone ligado, saida trocada), os numeros antigos passam a apontar para outro dispositivo e a voz some.
+    Reler a cada uso (no maximo de 3 em 3 s e nunca com um som tocando) evita isso."""
+    global _hw_relido_em
     import sounddevice as sd
 
-    if recarregar:
+    if not forcar and time.time() - _hw_relido_em < 3.0:
+        return
+    with _audio_hw_lock:
+        try:
+            st = sd.get_stream()
+            if st is not None and st.active:  # tem som tocando: reler agora o derrubaria
+                return
+        except Exception:
+            pass
         try:
             sd._terminate()
             sd._initialize()
+            _hw_relido_em = time.time()
         except Exception:
             log.exception("nao consegui reler os dispositivos de audio")
+
+
+def _lista_dispositivos(recarregar: bool = False):
+    """(dispositivos, apis, padrao_entrada, padrao_saida)."""
+    import sounddevice as sd
+
+    if recarregar:
+        atualizar_hardware_de_audio(forcar=True)
     devs = [dict(d, index=i) for i, d in enumerate(sd.query_devices())]
     apis = [dict(a) for a in sd.query_hostapis()]
     try:
@@ -95,6 +118,8 @@ def dispositivos_de(tipo: str, recarregar: bool = False) -> list:
     """Ordem de tentativa para entrada/saida: o configurado (mic_device / speaker_device), o do notebook, o padrao."""
     import audio_disp
 
+    if not recarregar:
+        atualizar_hardware_de_audio()
     devs, apis, pad_in, pad_out = _lista_dispositivos(recarregar)
     pref = CFG.get("mic_device" if tipo == audio_disp.ENTRADA else "speaker_device")
     lista = audio_disp.candidatos(devs, tipo, pref, pad_in if tipo == audio_disp.ENTRADA else pad_out, apis)
@@ -986,6 +1011,12 @@ def executar_acao(acao: str) -> dict:
         import webbrowser
 
         webbrowser.open(f"http://127.0.0.1:{HISTORY_PORT}")
+    elif acao == "testar_som":  # bip + frase pelo mesmo caminho da voz do Jarvis (para saber se o som sai)
+        def _teste() -> None:
+            beep(660, 250)
+            speak("Teste de som, senhor. Se o senhor está me ouvindo, a saída do Jarvis funciona.")
+
+        threading.Thread(target=_teste, daemon=True).start()
     elif acao == "esfera":
         ligada = esfera_alternar()
         return {"ok": True, "mensagem": "Esfera ligada: aparece quando o Jarvis estiver em ação." if ligada else "Esfera desligada."}
@@ -1417,6 +1448,9 @@ def run_tray() -> None:
     def abrir_painel(_i=None, _it=None):
         painel_hotkey()
 
+    def testar_som(_i=None, _it=None):
+        executar_acao("testar_som")
+
     def restaurar_painel(_i=None, _it=None):
         painel_geom_resetar()
 
@@ -1433,6 +1467,7 @@ def run_tray() -> None:
         pystray.MenuItem(f"Falar agora ({CFG['hotkey']})", falar),
         pystray.MenuItem(f"Painel rápido ({painel_cfg().get('hotkey', 'ctrl+alt+t')})", abrir_painel),
         pystray.MenuItem("Restaurar posição do painel", restaurar_painel),
+        pystray.MenuItem("Testar som", testar_som),
         pystray.MenuItem("Mostrar esfera", alternar_overlay, checked=lambda _it: CURRENT.get("esfera_visivel", True)),
         pystray.MenuItem("Abrir histórico", abrir_historico),
         pystray.MenuItem("Nova conversa", nova),

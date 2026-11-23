@@ -110,6 +110,18 @@ def test_geometria_do_painel_salva_valida_e_restaura(srv, tmp_path, monkeypatch)
     assert estado["geom"] is None and estado["reset"] == antes + 1             # o app percebe a restauracao pelo contador
 
 
+def test_testar_som_fala_pelo_servico(srv, monkeypatch):
+    ditos = []
+    monkeypatch.setattr(jarvis, "beep", lambda *a, **k: ditos.append("bip"))
+    monkeypatch.setattr(jarvis, "speak", lambda texto: ditos.append(texto))
+    assert chamar(srv, "POST", "/api/acao", {"acao": "testar_som"})[0] == 200
+    for _ in range(40):
+        if len(ditos) >= 2:
+            break
+        time.sleep(0.05)
+    assert ditos[0] == "bip" and "Teste de som" in ditos[1]
+
+
 def test_falar_pelo_painel_nao_fecha_o_painel(srv, monkeypatch):
     chamadas = []
     monkeypatch.setattr(jarvis, "on_hotkey", lambda: chamadas.append("microfone"))
