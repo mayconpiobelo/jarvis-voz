@@ -45,16 +45,24 @@ def srv(tmp_path_factory):
 
 
 def chamar(porta, metodo, caminho, corpo=None, host=None, ctype="application/json"):
-    c = http.client.HTTPConnection("127.0.0.1", porta, timeout=5)
     cab = {"Host": host or f"127.0.0.1:{porta}"}
     dados = None
     if metodo == "POST":
         dados = json.dumps(corpo if corpo is not None else {}).encode()
         cab["Content-Type"] = ctype
-    c.request(metodo, caminho, body=dados, headers=cab)
-    r = c.getresponse()
-    bruto = r.read()
-    c.close()
+    for tentativa in range(3):  # loopback sob carga (maquina ocupada) as vezes derruba uma conexao: tenta de novo
+        c = http.client.HTTPConnection("127.0.0.1", porta, timeout=5)
+        try:
+            c.request(metodo, caminho, body=dados, headers=cab)
+            r = c.getresponse()
+            bruto = r.read()
+            break
+        except (ConnectionError, http.client.RemoteDisconnected):
+            if tentativa == 2:
+                raise
+            time.sleep(0.2)
+        finally:
+            c.close()
     try:
         return r.status, json.loads(bruto)
     except ValueError:
@@ -142,6 +150,83 @@ def test_sistema_devolve_percentuais(srv):
     time.sleep(0.2)
     s = chamar(srv, "GET", "/api/sistema")[1]
     assert 0 <= s["cpu"] <= 100 and 0 <= s["mem"] <= 100 and s["uptime_s"] > 0
+
+
+def test_rotas_de_musica_com_player_falso(srv):
+    import musica
+
+    class Falso:
+        def __init__(self):
+            self.acoes = []
+
+        def snapshot(self, preferir):
+            return {"app": "Spotify", "titulo": "Faixa", "artista": "Banda", "album": "Disco", "estado": "tocando", "posicao_s": 10.0,
+                    "duracao_s": 100.0, "tem_capa": True, "pode": {"anterior": True, "proxima": True, "play_pause": True}}
+
+        def capa(self, preferir):
+            import io
+
+            from PIL import Image
+
+            b = io.BytesIO()
+            Image.new("RGB", (4, 4), (10, 200, 10)).save(b, "PNG")
+            return b.getvalue()
+
+        def acao(self, acao, preferir):
+            self.acoes.append(acao)
+            return True
+
+    f = Falso()
+    musica.definir_backend(f)
+    try:
+        st, m = chamar(srv, "GET", "/api/musica")
+        assert st == 200 and m["ativo"] and m["titulo"] == "Faixa" and m["estado"] == "tocando" and m["capa"]
+        conn = http.client.HTTPConnection("127.0.0.1", srv, timeout=5)
+        conn.request("GET", "/api/musica/capa", headers={"Host": f"127.0.0.1:{srv}"})
+        r = conn.getresponse()
+        assert r.status == 200 and r.getheader("Content-Type") == "image/png" and r.read()[:4] == b"\x89PNG"
+        conn.close()
+        assert chamar(srv, "POST", "/api/musica/acao", {"acao": "proxima"})[0] == 200
+        assert chamar(srv, "POST", "/api/musica/acao", {"acao": "formatar_disco"})[0] == 404     # so acoes conhecidas
+        assert chamar(srv, "POST", "/api/musica/acao", {"acao": "play_pause"}, host="evil.example")[0] == 403
+        assert chamar(srv, "POST", "/api/musica/acao", {"acao": "anterior"}, ctype="text/plain")[0] == 415
+        assert f.acoes == ["proxima"]
+        # desligado no config: nada e lido nem controlado
+        jarvis.CFG["painel"]["musica"] = {"enabled": False}
+        assert chamar(srv, "GET", "/api/musica")[1]["disponivel"] is False
+        assert chamar(srv, "POST", "/api/musica/acao", {"acao": "proxima"})[0] == 404
+        assert jarvis.responder_musica("próxima música") is None
+        assert f.acoes == ["proxima"]
+    finally:
+        jarvis.CFG["painel"].pop("musica", None)
+        musica.definir_backend(None)
+
+
+def test_voz_de_musica_passa_pelo_jarvis(srv):
+    import musica
+
+    class P:
+        def __init__(self):
+            self.acoes = []
+
+        def snapshot(self, preferir):
+            return {"app": "Spotify", "titulo": "Faixa", "artista": "Banda", "album": "", "estado": "tocando", "posicao_s": 0.0,
+                    "duracao_s": 90.0, "tem_capa": False, "pode": {"anterior": True, "proxima": True, "play_pause": True}}
+
+        def capa(self, preferir):
+            return None
+
+        def acao(self, acao, preferir):
+            self.acoes.append(acao)
+            return True
+
+    p = P()
+    musica.definir_backend(p)
+    try:
+        assert jarvis.responder_musica("Jarvis, pausa a música") == "Pausado, senhor." and p.acoes == ["play_pause"]
+        assert jarvis.responder_musica("toca uma música do Queen") is None
+    finally:
+        musica.definir_backend(None)
 
 
 def test_atalho_interno_do_painel_valida():

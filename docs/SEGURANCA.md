@@ -12,8 +12,9 @@ O Jarvis dá ao Claude acesso amplo ao seu computador e às suas ferramentas (e-
    - **falha fechada**: entrada ilegível = barrado.
 4. **Servidor local endurecido**: só `127.0.0.1`; recusa `Host` diferente (DNS rebinding); POST exige JSON (força preflight CORS).
 5. **Painel e atalhos**: `/api/acao` só aceita **ids conhecidos** (ações internas ou atalhos definidos no seu `config.json`); o navegador nunca recebe nem envia o alvo (caminho/URL), e links só abrem se forem `http(s)`.
-6. **Overlay**: sem foco, cliques atravessam; não executa nada, só exibe.
-7. **Repositório**: `config.json`, histórico, tarefas, tokens e modelos estão no `.gitignore`; um teste (`tests/test_privacidade.py`) falha se dado pessoal ou segredo entrar em arquivo versionado.
+6. **Música**: usa só o controle de mídia do Windows (nada de credenciais do Spotify). `/api/musica/acao` aceita apenas `play_pause`, `proxima` e `anterior`; pode ser desligada em `painel.musica.enabled`.
+7. **Overlay**: sem foco, cliques atravessam; não executa nada, só exibe.
+8. **Repositório**: `config.json`, histórico, tarefas, tokens e modelos estão no `.gitignore`; um teste (`tests/test_privacidade.py`) falha se dado pessoal ou segredo entrar em arquivo versionado.
 
 ## Riscos residuais
 - **Confirmação por voz**: ruído que o Whisper entenda como “sim” logo após uma pergunta de confirmação libera a ação *anunciada*. Frases com mais de 6 palavras não valem e qualquer negação vence.

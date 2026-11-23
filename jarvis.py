@@ -635,9 +635,11 @@ def handle_text(text: str) -> None:
         speak("Cancelado, senhor.")
         return
     if confirm is None:  # comandos de tarefas: resposta imediata, sem gastar uma chamada ao Claude
-        local = responder_tarefas(text)
+        local, rotulo = responder_tarefas(text), "Lista de tarefas"
+        if local is None:
+            local, rotulo = responder_musica(text), "Música"
         if local is not None:
-            CURRENT.update(heard=text, reply=local, tools=[{"id": "tarefas", "label": "Lista de tarefas", "done": True}])
+            CURRENT.update(heard=text, reply=local, tools=[{"id": "local", "label": rotulo, "done": True}])
             add_history(pergunta=text, resposta=local)
             _status_cb("speaking")
             log.info("tarefa (local): %s -> %s", text, local)
@@ -762,6 +764,27 @@ def read_history(limit: int = 500) -> list[dict]:
 # ----------------------------------------------------------------- painel rapido (widgets flutuantes)
 def painel_cfg() -> dict:
     return CFG.get("painel", {})
+
+
+def musica_cfg() -> dict:
+    return painel_cfg().get("musica", {})
+
+
+def musica_ligada() -> bool:
+    return bool(musica_cfg().get("enabled", True))
+
+
+def responder_musica(texto: str) -> str | None:
+    """Comando de musica por voz tratado na hora ("pausa a musica", "proxima musica", "o que esta tocando")."""
+    if not musica_ligada():
+        return None
+    try:
+        import musica
+
+        return musica.responder(texto)
+    except Exception:
+        log.exception("erro no controle de musica")
+        return None
 
 
 def painel_alternar(mostrar: bool | None = None) -> bool:
@@ -909,6 +932,21 @@ def start_history_server() -> None:
             if path == "/api/painel":
                 dados = {"show": bool(CURRENT.get("painel")), "corner": painel_cfg().get("corner", "tr")}
                 return self._send(200, json.dumps(dados).encode(), "application/json")
+            if path == "/api/musica":
+                if not musica_ligada():
+                    dados = {"disponivel": False, "ativo": False, "motivo": "desligado no config"}
+                else:
+                    import musica
+
+                    dados = musica.snapshot(musica_cfg().get("app", "Spotify"))
+                return self._send(200, json.dumps(dados, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
+            if path == "/api/musica/capa":
+                import musica
+
+                capa = musica.capa_bytes() if musica_ligada() else None
+                if not capa:
+                    return self._send(404, b"sem capa", "text/plain")
+                return self._send(200, capa[0], capa[1])
             if path == "/api/sistema":
                 return self._send(200, json.dumps(sistema_info()).encode(), "application/json")
             if path == "/api/atalhos":
@@ -954,6 +992,13 @@ def start_history_server() -> None:
             if path in ("/api/painel/alternar", "/api/painel/fechar"):
                 painel_alternar(None if path.endswith("alternar") else False)
                 return self._send(200, b'{"ok":true}', "application/json")
+            if path == "/api/musica/acao":
+                if not musica_ligada():
+                    return self._send(404, b'{"ok":false}', "application/json")
+                import musica
+
+                r = musica.acao(str(corpo.get("acao", ""))[:20], musica_cfg().get("app", "Spotify"))
+                return self._send(200 if r.get("ok") else 404, json.dumps(r).encode(), "application/json")
             if path == "/api/acao":
                 r = executar_acao(str(corpo.get("acao", ""))[:40])
                 return self._send(200 if r.get("ok") else 404, json.dumps(r).encode(), "application/json")
@@ -984,7 +1029,17 @@ def start_history_server() -> None:
             pass
 
     try:
-        srv = ThreadingHTTPServer(("127.0.0.1", HISTORY_PORT), H)
+        class Servidor(ThreadingHTTPServer):
+            daemon_threads = True
+
+            def handle_error(self, request, client_address):  # navegador/WebView que fecha a aba nao e erro
+                import sys
+
+                if isinstance(sys.exc_info()[1], (ConnectionResetError, ConnectionAbortedError, BrokenPipeError)):
+                    return
+                log.exception("erro no servidor local")
+
+        srv = Servidor(("127.0.0.1", HISTORY_PORT), H)
     except OSError:
         log.exception("porta %s indisponivel para o historico", HISTORY_PORT)
         return

@@ -8,7 +8,7 @@ Ctrl+Alt+J → microfone → Whisper (local) → Claude Code (suas ferramentas) 
 
 - **Esfera flutuante** (overlay): aparece sozinha no canto da tela enquanto ele ouve, pensa e fala; não rouba o foco e os cliques passam por ela.
 - **Janela completa**: esfera, etapas (Microfone → Whisper → Claude → Voz), ferramentas em uso, legendas, histórico e **tarefas**.
-- **Painel rápido** (`Ctrl+Alt+T`): painel flutuante de widgets, com **Tarefas** (campo “Nova tarefa”, concluir com um clique), **Hoje**, **Jarvis**, **Atalhos** (apps e links seus) e **Sistema**.
+- **Painel rápido** (`Ctrl+Alt+T`): painel flutuante de widgets, com **Tarefas** (campo “Nova tarefa”, concluir com um clique), **Hoje** (com CPU e memória), **Música** (Spotify: capa, progresso e controles), **Jarvis** e **Atalhos** (apps e links seus).
 - **Trava de segurança**: o que envia, publica ou mexe fora da sua pasta só acontece depois de você dizer **“confirma”**; apagar e comandos destrutivos ficam bloqueados.
 - **Lista de tarefas por voz**: *“Jarvis, insira: atualizar workload geral na lista de tarefas.”*
 
@@ -41,11 +41,14 @@ O script cria o `.venv`, instala as dependências, copia `config.example.json` �
 | Nova conversa | Dizer “nova conversa” ou menu da bandeja |
 | Iniciar com o Windows | Menu da bandeja → *Iniciar com o Windows* |
 
+### Música por voz
+“pausa a música” · “continua a música” · “próxima música” · “música anterior” · “o que está tocando”. Funciona com o Spotify (inclusive o da Microsoft Store) e com qualquer player que apareça no controle de mídia do Windows, **sem login nem chave de API**. Pedidos como “toca uma música do Queen” seguem para o Claude (o Jarvis não busca faixas).
+
 ### Tarefas por voz
 “insira: *texto* na lista de tarefas” · “quais são as minhas tarefas” · “conclua a tarefa 2” · “remova a tarefa do contrato” · “desfazer”. Detalhes em [docs/TAREFAS.md](docs/TAREFAS.md).
 
 ## Configuração
-O painel e os seus atalhos (apps, pastas e links) ficam em `painel` no `config.json`: `hotkey`, `corner` (`tr`, `tl`, `br`, `bl`, `c`) e `atalhos` (`{id, nome, tipo: app|url, alvo}`; o botão “Adicionar” do painel abre o arquivo). O navegador nunca recebe o `alvo`, só o `id`.
+A música usa `painel.musica` (`enabled` e `app`, o player preferido; padrão `Spotify`). O painel e os seus atalhos (apps, pastas e links) ficam em `painel` no `config.json`: `hotkey`, `corner` (`tr`, `tl`, `br`, `bl`, `c`) e `atalhos` (`{id, nome, tipo: app|url, alvo}`; o botão “Adicionar” do painel abre o arquivo). O navegador nunca recebe o `alvo`, só o `id`.
 
 Tudo está em `config.json` (modelo em `config.example.json`): atalho, voz (`kokoro_*`), persona, bloqueios e confirmação, posição do overlay (`overlay.corner/size/margin`), arquivo de tarefas. Veja [docs/VOZ.md](docs/VOZ.md).
 

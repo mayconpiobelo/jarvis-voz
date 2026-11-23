@@ -7,6 +7,9 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); 
 - **Painel rápido** flutuante (`Ctrl+Alt+T`) com widgets de Tarefas, Hoje, Jarvis, Atalhos e Sistema; segunda janela no app Tauri, posicionada na tela do mouse.
 - Atalhos de apps e links configuráveis (`painel.atalhos`), sem expor o alvo ao navegador.
 - Entrada de texto livre nas tarefas (prazo e prioridade) e comandos digitados no painel.
+- Widget de **Música** (Spotify e outros players): capa, faixa, progresso e controles; o fundo do cartão assume a cor da capa.
+- Comandos de voz de música (“pausa a música”, “próxima música”, “o que está tocando”), com resposta imediata.
+- **Visual novo do painel**: degradê profundo, cartões em vidro, acento ciano-violeta; o Sistema virou barras dentro do Hoje.
 - Segundo atalho global e `esfera` mostrar/ocultar sem encerrar o app.
 
 ## [0.1.0] — 2026-11-22

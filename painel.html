@@ -7,161 +7,200 @@
 <title>Jarvis — Painel</title>
 <style>
   :root {
-    --card: #1c1c1e; --card2: #232326; --line: rgba(255,255,255,.07); --text: #f2f2f7; --muted: #98989f; --faint: #6c6c72;
-    --blue: #0a84ff; --green: #30d158; --orange: #ff9f0a; --red: #ff453a; --cyan: #40d4f2;
-    --accent: var(--blue);
+    --text: #eaf1fb; --muted: #8fa1ba; --faint: #5d6f88; --line: rgba(255,255,255,.075);
+    --ac1: #4dd5ff; --ac2: #7c5cff; --grad: linear-gradient(135deg, var(--ac1), var(--ac2));
+    --ok: #34d399; --warn: #fbbf24; --bad: #fb7185; --mc: #1db954;
+    --glass: linear-gradient(180deg, rgba(255,255,255,.065), rgba(255,255,255,.028));
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
-  body.debug { background: #0b0b0d; }
-  body { color: var(--text); font: 13.5px/1.4 system-ui, "Segoe UI", sans-serif; user-select: none; }
+  body.debug { background: #05070b; }
+  body { color: var(--text); font: 13px/1.4 system-ui, "Segoe UI", sans-serif; user-select: none; -webkit-font-smoothing: antialiased; }
   button { font: inherit; color: inherit; }
-  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 8px; }
+  [hidden] { display: none !important; }   /* o display dos componentes nao pode anular o atributo hidden */
+  :focus-visible { outline: 2px solid var(--ac1); outline-offset: 2px; border-radius: 9px; }
+  svg.i { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
-  .grid { position: fixed; inset: 8px; display: grid; gap: 10px; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto 1fr auto; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px; position: relative; overflow: hidden;
-          box-shadow: 0 10px 30px rgba(0,0,0,.45); }
-  .head { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
-  .badge { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; flex: none; }
-  .badge svg { width: 14px; height: 14px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  .title { font-weight: 700; font-size: 15px; }
-  .count { color: var(--muted); font-weight: 600; }
+  /* ---- casca: degrade profundo com brilhos suaves ---- */
+  #shell { position: fixed; inset: 8px; border-radius: 24px; padding: 10px; border: 1px solid rgba(255,255,255,.09);
+           background:
+             radial-gradient(90% 70% at 0% 0%, rgba(40,120,170,.34) 0%, transparent 60%),
+             radial-gradient(80% 70% at 100% 100%, rgba(110,70,220,.30) 0%, transparent 62%),
+             linear-gradient(160deg, #0e1726 0%, #090d16 100%);
+           box-shadow: 0 24px 60px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.07);
+           display: grid; gap: 10px; grid-template-columns: 1fr 1fr; grid-template-rows: 24px 176px 168px 1fr; }
+  .card { background: var(--glass); border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px; position: relative; overflow: hidden;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 6px 18px rgba(0,0,0,.25); min-height: 0; }
+  .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .17em; text-transform: uppercase; color: var(--ac1); opacity: .85; display: flex; align-items: center; gap: 7px; }
+  .lbl svg.i { width: 14px; height: 14px; }
   .sp { flex: 1; }
-  .ib { width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; }
-  .ib:hover { background: rgba(255,255,255,.08); color: var(--text); }
-  .ib svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  .ib[aria-pressed="true"] { color: var(--blue); }
+  .ib { width: 28px; height: 28px; border-radius: 9px; border: 0; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; }
+  .ib:hover { background: rgba(255,255,255,.09); color: var(--text); } .ib[aria-pressed="true"] { color: var(--ac1); background: rgba(77,213,255,.12); }
 
-  /* barra superior (arrastar nao e suportado em pagina externa; o canto vem do config) */
-  .top { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding: 0 4px; height: 22px; color: var(--muted); font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase; }
-  .top b { color: var(--text); letter-spacing: .3em; }
+  /* ---- barra superior ---- */
+  .top { grid-column: 1 / -1; display: flex; align-items: center; gap: 9px; padding: 0 4px; position: relative; }
+  .top::after { content: ""; position: absolute; left: 0; right: 0; bottom: -4px; height: 1px; background: linear-gradient(90deg, var(--ac1), var(--ac2) 55%, transparent); opacity: .5; }
+  .marca { font-weight: 800; letter-spacing: .34em; font-size: 11.5px; display: flex; align-items: center; gap: 9px; }
+  .marca i { width: 7px; height: 7px; border-radius: 50%; background: var(--ac1); box-shadow: 0 0 12px var(--ac1); }
+  #pinTxt { color: var(--muted); font-size: 11px; letter-spacing: .1em; }
 
-  /* tarefas */
-  #cTarefas { grid-column: 1; grid-row: 2 / 4; display: flex; flex-direction: column; min-height: 0; }
-  #lista { flex: 1; overflow-y: auto; margin: 0 -6px; padding: 0 6px; scrollbar-width: thin; scrollbar-color: #3a3a3c transparent; }
-  .tarefa { display: flex; gap: 10px; align-items: flex-start; padding: 8px 4px; border-bottom: 1px solid var(--line); border-radius: 8px; cursor: default; }
-  .tarefa:last-child { border-bottom: 0; }
-  .tarefa.sel { background: rgba(10,132,255,.14); }
-  .tarefa:hover .rm { opacity: 1; }
-  .ck { width: 20px; height: 20px; flex: none; margin-top: 1px; border-radius: 50%; border: 1.7px solid #636366; background: transparent; cursor: pointer; display: grid; place-items: center; padding: 0; }
-  .ck:hover { border-color: var(--green); }
-  .ck svg { width: 12px; height: 12px; stroke: #04210f; stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
-  .tarefa.feita .ck { background: var(--green); border-color: var(--green); } .tarefa.feita .ck svg { opacity: 1; }
-  .tarefa.feita .tx { color: var(--faint); text-decoration: line-through; }
+  /* ---- tarefas ---- */
+  #cTarefas { grid-column: 1; grid-row: 2 / 4; display: flex; flex-direction: column; }
+  .head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .qtd { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 99px; background: rgba(77,213,255,.14); color: var(--ac1); }
+  #lista { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -8px; padding: 0 8px; scrollbar-width: thin; scrollbar-color: #2a3a52 transparent; }
+  .tarefa { display: flex; gap: 11px; align-items: flex-start; padding: 8px 6px; border-radius: 11px; position: relative; }
+  .tarefa + .tarefa { border-top: 1px solid rgba(255,255,255,.04); }
+  .tarefa:hover { background: rgba(255,255,255,.04); } .tarefa:hover .rm { opacity: 1; }
+  .tarefa.sel { background: rgba(77,213,255,.10); box-shadow: inset 2px 0 0 var(--ac1); }
+  .tarefa.alta::before { content: ""; position: absolute; left: -2px; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: var(--warn); }
+  .ck { width: 19px; height: 19px; flex: none; margin-top: 1px; border-radius: 50%; border: 1.6px solid #46586f; background: transparent; cursor: pointer; display: grid; place-items: center; padding: 0; transition: .15s; }
+  .ck:hover { border-color: var(--ok); box-shadow: 0 0 0 4px rgba(52,211,153,.12); }
+  .ck svg { width: 11px; height: 11px; stroke: #052e1f; stroke-width: 3.2; fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+  .feita .ck { background: var(--ok); border-color: var(--ok); } .feita .ck svg { opacity: 1; }
+  .feita .tx { color: var(--faint); text-decoration: line-through; }
   .corpo { flex: 1; min-width: 0; }
   .tx { font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-  .meta { margin-top: 2px; font-size: 11.5px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; }
-  .meta .alta { color: var(--orange); } .meta .hoje { color: var(--orange); } .meta .atras { color: var(--red); }
-  .rm { opacity: 0; border: 0; background: transparent; color: var(--faint); cursor: pointer; width: 22px; height: 22px; border-radius: 6px; flex: none; }
-  .rm:hover { color: var(--red); background: rgba(255,69,58,.12); } .rm:focus-visible { opacity: 1; }
-  .vazio { color: var(--faint); text-align: center; padding: 26px 8px; font-size: 13px; }
-  .nova { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); margin: 6px -2px 0; padding-top: 10px; }
-  .nova svg { width: 16px; height: 16px; stroke: var(--faint); fill: none; stroke-width: 2; stroke-linecap: round; flex: none; }
-  .nova input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--text); font: inherit; font-weight: 600; outline: none; user-select: text; }
-  .nova input::placeholder { color: var(--faint); }
-  .aviso { font-size: 11.5px; color: var(--green); min-height: 16px; margin-top: 4px; }
-  .aviso.erro { color: var(--red); }
-  .conc { color: var(--muted); font-size: 12px; background: transparent; border: 0; cursor: pointer; padding: 4px 2px; text-align: left; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 3px; }
+  .chip { font-size: 10.5px; font-weight: 600; padding: 1px 8px; border-radius: 99px; background: rgba(255,255,255,.07); color: var(--muted); }
+  .chip.hoje { background: rgba(251,191,36,.15); color: var(--warn); } .chip.atras { background: rgba(251,113,133,.16); color: var(--bad); }
+  .chip.amanha { background: rgba(77,213,255,.14); color: var(--ac1); } .chip.alta { background: rgba(251,191,36,.12); color: var(--warn); }
+  .rm { opacity: 0; border: 0; background: transparent; color: var(--faint); cursor: pointer; width: 22px; height: 22px; border-radius: 7px; flex: none; font-size: 11px; }
+  .rm:hover { color: var(--bad); background: rgba(251,113,133,.14); } .rm:focus-visible { opacity: 1; }
+  .vazio { color: var(--faint); text-align: center; padding: 22px 8px; }
+  .conc { color: var(--faint); font-size: 11.5px; background: transparent; border: 0; cursor: pointer; padding: 4px 6px; text-align: left; }
   .conc:hover { color: var(--text); }
+  .nova { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 8px 12px; border-radius: 12px; background: rgba(255,255,255,.05); border: 1px solid var(--line); transition: .15s; }
+  .nova:focus-within { border-color: rgba(77,213,255,.55); box-shadow: 0 0 0 4px rgba(77,213,255,.10); }
+  .nova svg.i { color: var(--faint); }
+  .nova input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--text); font: inherit; font-weight: 600; outline: none; user-select: text; }
+  .nova input::placeholder { color: var(--faint); font-weight: 500; }
+  .aviso { font-size: 11px; color: var(--ok); min-height: 15px; margin-top: 4px; padding-left: 4px; } .aviso.erro { color: var(--bad); }
 
-  /* hoje */
-  #cHoje { grid-column: 2; grid-row: 2; }
-  .dia { font-size: 11px; letter-spacing: .12em; font-weight: 700; color: var(--blue); text-transform: uppercase; }
-  .hora { font-size: 52px; line-height: 1.05; font-weight: 700; letter-spacing: -1px; margin: 2px 0; font-variant-numeric: tabular-nums; }
-  .data { color: var(--muted); font-weight: 600; }
-  .prog { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--muted); font-size: 11.5px; font-weight: 600; }
-  .barra { flex: 1; height: 5px; border-radius: 99px; background: #3a3a3c; overflow: hidden; } .barra i { display: block; height: 100%; background: var(--blue); border-radius: 99px; }
-  .hojeinfo { margin-top: 8px; font-size: 12px; color: var(--muted); } .hojeinfo b { color: var(--text); } .hojeinfo .r { color: var(--red); }
+  /* ---- hoje ---- */
+  #cHoje { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; }
+  .linha { display: flex; align-items: baseline; gap: 10px; }
+  .hora { font-size: 46px; line-height: 1; font-weight: 700; letter-spacing: -1.5px; font-variant-numeric: tabular-nums;
+          background: linear-gradient(180deg, #ffffff 20%, #9db3d0); -webkit-background-clip: text; background-clip: text; color: transparent; margin-top: 4px; }
+  .dts { color: var(--muted); font-weight: 600; font-size: 12.5px; line-height: 1.25; }
+  .barra { height: 4px; border-radius: 99px; background: rgba(255,255,255,.09); overflow: hidden; } .barra i { display: block; height: 100%; background: var(--grad); border-radius: 99px; transition: width .6s; }
+  .hojeinfo { font-size: 12px; color: var(--muted); margin: 6px 0 8px; } .hojeinfo b { color: var(--text); } .hojeinfo .r { color: var(--bad); }
+  .mini { display: grid; grid-template-columns: 30px 1fr 32px; gap: 8px; align-items: center; font-size: 10.5px; color: var(--muted); font-weight: 700; letter-spacing: .08em; margin-top: 4px; }
+  .mini span:last-child { text-align: right; color: var(--text); font-variant-numeric: tabular-nums; }
+  .mini .barra i.cpu { background: linear-gradient(90deg, var(--ok), #a3e635); } .mini .barra i.mem { background: var(--grad); }
+  .up { font-size: 10.5px; color: var(--faint); margin-top: auto; padding-top: 4px; }
 
-  /* jarvis */
-  #cJarvis { grid-column: 2; grid-row: 3; display: grid; grid-template-columns: 92px 1fr; gap: 4px 12px; align-items: center; }
-  #orb { width: 92px; height: 92px; display: block; }
-  .jstate { display: flex; align-items: center; gap: 7px; font-weight: 700; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
-  .jreply { color: var(--muted); font-size: 12.5px; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.8em; }
-  .jbtns { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 4px; }
-  .pill { flex: 1; border: 0; border-radius: 10px; padding: 8px 10px; background: var(--card2); cursor: pointer; font-weight: 600; display: flex; gap: 7px; align-items: center; justify-content: center; }
-  .pill:hover { background: #2e2e32; } .pill.prim { background: var(--blue); } .pill.prim:hover { background: #2b95ff; }
-  .pill svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-  .pend { grid-column: 1 / -1; color: var(--orange); font-size: 12px; font-weight: 600; }
+  /* ---- musica ---- */
+  #cMusica { grid-column: 2; grid-row: 3; display: grid; grid-template-columns: 76px 1fr; grid-template-rows: auto auto auto; gap: 2px 14px; align-content: center;
+             background: linear-gradient(135deg, color-mix(in srgb, var(--mc) 42%, #0b1220) 0%, rgba(11,18,32,.55) 75%), var(--glass); transition: background .6s; }
+  #capa, .capa0 { width: 76px; height: 76px; border-radius: 14px; object-fit: cover; box-shadow: 0 8px 22px rgba(0,0,0,.5); background: rgba(255,255,255,.07); display: grid; place-items: center; color: var(--faint); }
+  .capa0 svg.i { width: 28px; height: 28px; }
+  #capa { grid-column: 1; grid-row: 1 / 3; }
+  .mt { grid-column: 2; grid-row: 1; align-self: end; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1px; }
+  .mapp { font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: color-mix(in srgb, var(--mc) 70%, #fff); display: flex; align-items: center; gap: 6px; }
+  .mapp i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); } .mapp i.off { background: var(--faint); box-shadow: none; }
+  .mtit { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mart { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mprog { grid-column: 1 / -1; grid-row: 3; margin-top: 8px; display: grid; grid-template-columns: 34px 1fr 34px; gap: 8px; align-items: center; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .mprog span:last-child { text-align: right; } .mprog .barra { height: 4px; } .mprog .barra i { background: color-mix(in srgb, var(--mc) 55%, #fff); transition: width .25s linear; }
+  .mctl { grid-column: 2; grid-row: 2; align-self: start; display: flex; align-items: center; justify-content: flex-start; gap: 10px; margin-top: 4px; }
+  .mctl button { border: 0; background: transparent; color: var(--text); cursor: pointer; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; }
+  .mctl button:hover { background: rgba(255,255,255,.1); } .mctl button:disabled { opacity: .3; cursor: default; background: transparent; }
+  .mctl button.pp { width: 36px; height: 36px; background: #fff; color: #0b1220; } .mctl button.pp:hover { background: #e6eefb; } .mctl button.pp:disabled { background: rgba(255,255,255,.25); }
+  .mctl svg.i { width: 18px; height: 18px; fill: currentColor; stroke: none; }
+  .mvazio { grid-column: 1 / -1; grid-row: 1 / 4; display: flex; align-items: center; gap: 12px; color: var(--muted); }
+  .mvazio .capa0 { flex: none; } .mvazio small { color: var(--faint); display: block; }
+  .mvazio button { margin-left: auto; border: 0; border-radius: 10px; padding: 7px 12px; background: rgba(255,255,255,.1); cursor: pointer; font-weight: 600; } .mvazio button:hover { background: rgba(255,255,255,.17); }
 
-  /* atalhos */
+  /* ---- jarvis ---- */
+  #cJarvis { grid-column: 2; grid-row: 4; display: grid; grid-template-columns: 78px 1fr; gap: 4px 12px; align-items: center; align-content: start; }
+  #orb { width: 78px; height: 78px; display: block; }
+  .jstate { display: flex; align-items: center; gap: 7px; font-weight: 700; } .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ac1); box-shadow: 0 0 10px var(--ac1); }
+  .jreply { color: var(--muted); font-size: 12px; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .jbtns { grid-column: 1 / -1; display: flex; gap: 8px; }
+  .pill { flex: 1; border: 1px solid var(--line); border-radius: 11px; padding: 8px 10px; background: rgba(255,255,255,.06); cursor: pointer; font-weight: 600; display: flex; gap: 7px; align-items: center; justify-content: center; transition: .15s; }
+  .pill:hover { background: rgba(255,255,255,.12); } .pill.prim { background: var(--grad); border-color: transparent; color: #04101c; } .pill.prim:hover { filter: brightness(1.1); }
+  .pend { grid-column: 1 / -1; color: var(--warn); font-size: 11.5px; font-weight: 600; }
+
+  /* ---- atalhos ---- */
   #cAtalhos { grid-column: 1; grid-row: 4; }
-  .tiles { display: flex; flex-wrap: wrap; gap: 8px; }
-  .tile { width: 74px; border: 0; background: transparent; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 2px; border-radius: 12px; font-size: 11.5px; font-weight: 600; }
-  .tile:hover { background: rgba(255,255,255,.07); }
-  .tile .ic { width: 42px; height: 42px; border-radius: 12px; background: #3a3a3c; display: grid; place-items: center; }
-  .tile .ic svg { width: 21px; height: 21px; stroke: #fff; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .tile.add .ic { background: transparent; border: 1.5px dashed #636366; } .tile.add .ic svg { stroke: #8e8e93; }
-  .tile span:last-child { max-width: 78px; line-height: 1.15; text-align: center; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .tiles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .tile { width: 70px; border: 0; background: transparent; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 2px; border-radius: 13px; font-size: 11px; font-weight: 600; color: var(--muted); transition: .15s; }
+  .tile:hover { background: rgba(255,255,255,.07); color: var(--text); transform: translateY(-1px); }
+  .tile .ic { width: 40px; height: 40px; border-radius: 12px; background: var(--glass); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ac1); }
+  .tile.add .ic { border-style: dashed; color: var(--faint); background: transparent; }
+  .tile span:last-child { max-width: 70px; line-height: 1.15; text-align: center; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
-  /* sistema */
-  #cSistema { grid-column: 2; grid-row: 4; }
-  .rings { display: flex; justify-content: space-around; margin-top: 2px; }
-  .ring { text-align: center; font-size: 11.5px; color: var(--muted); font-weight: 600; }
-  .ring svg { width: 64px; height: 64px; transform: rotate(-90deg); display: block; margin: 0 auto 3px; }
-  .ring circle { fill: none; stroke-width: 7; } .ring .bg { stroke: #3a3a3c; } .ring .fg { stroke-linecap: round; transition: stroke-dashoffset .6s; }
-  .ring .v { position: relative; } .ring .pct { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 700; color: var(--text); font-size: 13px; }
-  .up { margin-top: 6px; text-align: center; font-size: 11.5px; color: var(--muted); }
-
-  @media (prefers-reduced-motion: reduce) { .ring .fg { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
-<div class="grid">
-  <div class="top"><b>Jarvis</b><span id="pinTxt"></span><span class="sp"></span>
-    <button class="ib" id="btnPin" aria-pressed="false" title="Fixar (não fecha ao clicar fora)" aria-label="Fixar painel"><svg viewBox="0 0 24 24"><path d="M12 17v5M9 3h6l-1 7 3 3H7l3-3-1-7z"/></svg></button>
-    <button class="ib" id="btnFechar" title="Fechar (Esc)" aria-label="Fechar painel"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+<div id="shell">
+  <div class="top">
+    <span class="marca"><i></i>JARVIS</span><span id="pinTxt"></span><span class="sp"></span>
+    <button class="ib" id="btnPin" aria-pressed="false" title="Fixar (não fecha ao clicar fora)" aria-label="Fixar painel"><svg class="i" viewBox="0 0 24 24"><path d="M12 17v5M9 3h6l-1 7 3 3H7l3-3-1-7z"/></svg></button>
+    <button class="ib" id="btnFechar" title="Fechar (Esc)" aria-label="Fechar painel"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
 
   <section class="card" id="cTarefas" aria-label="Tarefas">
     <div class="head">
-      <span class="badge" style="background:var(--blue)"><svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg></span>
-      <span class="title">Tarefas</span><span class="count" id="nAbertas">0</span><span class="sp"></span>
-      <button class="ib" id="btnDesfazer" title="Desfazer a última alteração" aria-label="Desfazer"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3"/></svg></button>
-      <button class="ib" id="btnMais" title="Nova tarefa (/)" aria-label="Nova tarefa"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+      <span class="lbl"><svg class="i" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg>Tarefas</span><span class="qtd" id="nAbertas">0</span><span class="sp"></span>
+      <button class="ib" id="btnDesfazer" title="Desfazer (Ctrl+Z)" aria-label="Desfazer"><svg class="i" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3"/></svg></button>
+      <button class="ib" id="btnMais" title="Nova tarefa (/)" aria-label="Nova tarefa"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
     </div>
     <div id="lista" role="list" aria-label="Tarefas abertas"></div>
     <button class="conc" id="btnConc" hidden></button>
-    <div class="nova"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-      <input id="entrada" type="text" maxlength="300" autocomplete="off" spellcheck="false" aria-label="Nova tarefa"
-             placeholder="Nova tarefa… (ex.: revisar contrato para sexta urgente)"></div>
+    <div class="nova"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      <input id="entrada" type="text" maxlength="300" autocomplete="off" spellcheck="false" aria-label="Nova tarefa" placeholder="Nova tarefa… ex.: revisar contrato para sexta urgente"></div>
     <div class="aviso" id="aviso" role="status"></div>
   </section>
 
   <section class="card" id="cHoje" aria-label="Hoje">
-    <div class="dia" id="dia">—</div>
-    <div class="hora" id="hora">--:--</div>
-    <div class="data" id="data"></div>
-    <div class="prog"><span>Dia</span><div class="barra"><i id="barra" style="width:0%"></i></div><span id="pdia">0%</span></div>
+    <div class="lbl" id="dia">Hoje</div>
+    <div class="linha"><div class="hora" id="hora">--:--</div><div class="dts" id="data"></div></div>
+    <div class="barra" style="margin-top:8px"><i id="barra" style="width:0%"></i></div>
     <div class="hojeinfo" id="hojeinfo"></div>
+    <div class="mini"><span>CPU</span><div class="barra"><i class="cpu" id="bCpu" style="width:0%"></i></div><span id="sCpu">–</span></div>
+    <div class="mini"><span>RAM</span><div class="barra"><i class="mem" id="bMem" style="width:0%"></i></div><span id="sMem">–</span></div>
+    <div class="up" id="up"></div>
+  </section>
+
+  <section class="card" id="cMusica" aria-label="Música">
+    <div class="mvazio" id="mVazio">
+      <div class="capa0"><svg class="i" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zM20 16a3 3 0 11-6 0 3 3 0 016 0z"/></svg></div>
+      <div><span class="lbl" style="opacity:.7">Música</span><span id="mMotivo">Nada tocando</span><small>Toque algo no Spotify</small></div>
+      <button id="btnAbrirSpot" hidden>Abrir Spotify</button>
+    </div>
+    <img id="capa" alt="Capa do álbum" hidden>
+    <div class="mt" id="mInfo" hidden>
+      <div class="mapp"><i id="mDot"></i><span id="mApp">Spotify</span></div>
+      <div class="mtit" id="mTit"></div><div class="mart" id="mArt"></div>
+    </div>
+    <div class="mprog" id="mProg" hidden><span id="mPos">0:00</span><div class="barra" role="progressbar" aria-label="Progresso da faixa" id="mBar"><i id="mFill" style="width:0%"></i></div><span id="mDur">0:00</span></div>
+    <div class="mctl" id="mCtl" hidden>
+      <button id="mAnt" aria-label="Faixa anterior"><svg class="i" viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+      <button class="pp" id="mPP" aria-label="Tocar ou pausar"><svg class="i" id="mPPi" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+      <button id="mProx" aria-label="Próxima faixa"><svg class="i" viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+    </div>
+  </section>
+
+  <section class="card" id="cAtalhos" aria-label="Atalhos">
+    <div class="lbl"><svg class="i" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>Atalhos</div>
+    <div class="tiles" id="tiles"></div>
   </section>
 
   <section class="card" id="cJarvis" aria-label="Jarvis">
-    <canvas id="orb" width="184" height="184" aria-hidden="true"></canvas>
+    <canvas id="orb" width="156" height="156" aria-hidden="true"></canvas>
     <div>
+      <div class="lbl" style="margin-bottom:3px">Jarvis</div>
       <div class="jstate"><span class="dot" id="jdot"></span><span id="jest">em espera</span></div>
       <div class="jreply" id="jreply"></div>
     </div>
     <div class="pend" id="pend" hidden>Aguardando sua confirmação: diga “confirma” ou “cancela”.</div>
     <div class="jbtns">
-      <button class="pill prim" id="btnFalar"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>Falar</button>
-      <button class="pill" id="btnNova"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.5 7.2L4 20l1-4.5A8 8 0 1121 12z"/></svg>Nova conversa</button>
+      <button class="pill prim" id="btnFalar"><svg class="i" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>Falar</button>
+      <button class="pill" id="btnNova"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.5 7.2L4 20l1-4.5A8 8 0 1121 12z"/></svg>Nova conversa</button>
     </div>
-  </section>
-
-  <section class="card" id="cAtalhos" aria-label="Atalhos">
-    <div class="head"><span class="badge" style="background:var(--orange)"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg></span><span class="title">Atalhos</span></div>
-    <div class="tiles" id="tiles"></div>
-  </section>
-
-  <section class="card" id="cSistema" aria-label="Sistema">
-    <div class="head"><span class="badge" style="background:var(--green)"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/></svg></span><span class="title">Sistema</span></div>
-    <div class="rings">
-      <div class="ring"><div class="v"><svg viewBox="0 0 64 64"><circle class="bg" cx="32" cy="32" r="26"/><circle class="fg" id="rCpu" cx="32" cy="32" r="26" stroke="#30d158" stroke-dasharray="163.4" stroke-dashoffset="163.4"/></svg><span class="pct" id="pCpu">–</span></div>CPU</div>
-      <div class="ring"><div class="v"><svg viewBox="0 0 64 64"><circle class="bg" cx="32" cy="32" r="26"/><circle class="fg" id="rMem" cx="32" cy="32" r="26" stroke="#0a84ff" stroke-dasharray="163.4" stroke-dashoffset="163.4"/></svg><span class="pct" id="pMem">–</span></div>Memória</div>
-    </div>
-    <div class="up" id="up"></div>
   </section>
 </div>
 
@@ -176,14 +215,16 @@
     window: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>',
     orb: '<circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c3 3 3 13 0 16M12 4c-3 3-3 13 0 16"/>',
     app: '<rect x="4" y="4" width="16" height="16" rx="4"/>',
+    music: '<path d="M9 18V5l11-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zM20 16a3 3 0 11-6 0 3 3 0 016 0z"/>',
     link: '<path d="M10 14a5 5 0 007 0l3-3a5 5 0 00-7-7l-1 1M14 10a5 5 0 00-7 0l-3 3a5 5 0 007 7l1-1"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
   };
-  const svg = n => `<svg viewBox="0 0 24 24">${ICONS[n] || ICONS.app}</svg>`;
+  const svg = n => `<svg class="i" viewBox="0 0 24 24">${ICONS[n] || ICONS.app}</svg>`;
   const post = (path, body = {}) => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()).catch(() => ({}));
   const get = path => fetch(path, { cache: 'no-store' }).then(r => r.json());
+  const oculto = () => document.hidden;
 
-  let status = { state: 'idle', rev: -1 }, dados = { abertas: [], concluidas: [] }, lastRev = -2, pinned = false, mostrarConc = false, sel = -1, focada = false;
+  let status = { state: 'idle', rev: -1 }, dados = { abertas: [], concluidas: [] }, lastRev = -2, pinned = false, mostrarConc = false, sel = -1, focada = false, atalhosIds = [];
   try { pinned = localStorage.getItem('jv-pin') === '1'; } catch {}
 
   // ---------------------------------------------------------------- tarefas
@@ -191,7 +232,8 @@
   const dias = p => Math.round((new Date(p + 'T00:00:00') - hoje0()) / 864e5);
   function fmtPrazo(p) {
     const k = dias(p), d = new Date(p + 'T00:00:00');
-    if (k === 0) return ['hoje', 'hoje']; if (k === 1) return ['amanhã', '']; if (k < 0) return ['atrasada · ' + d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), 'atras'];
+    if (k === 0) return ['hoje', 'hoje']; if (k === 1) return ['amanhã', 'amanha'];
+    if (k < 0) return ['atrasada · ' + d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), 'atras'];
     return [d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }), ''];
   }
   function avisar(msg, erro) { const a = $('aviso'); a.textContent = msg || ''; a.className = 'aviso' + (erro ? ' erro' : ''); clearTimeout(avisar.t); if (msg) avisar.t = setTimeout(() => a.textContent = '', 3500); }
@@ -202,12 +244,12 @@
     if (!ab.length) lista.append(el('div', 'vazio', 'Nenhuma tarefa aberta. Digite abaixo e aperte Enter.'));
     sel = Math.min(sel, ab.length - 1);
     ab.forEach((t, i) => {
-      const row = el('div', 'tarefa' + (i === sel ? ' sel' : '')); row.setAttribute('role', 'listitem'); row.dataset.i = i;
+      const row = el('div', 'tarefa' + (i === sel ? ' sel' : '') + (t.prioridade === 'alta' ? ' alta' : '')); row.setAttribute('role', 'listitem');
       const ck = el('button', 'ck'); ck.type = 'button'; ck.setAttribute('aria-label', 'Concluir: ' + t.texto); ck.innerHTML = '<svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg>';
       ck.onclick = () => concluir(t, row);
       const corpo = el('div', 'corpo'); corpo.append(el('div', 'tx', t.texto));
-      const meta = []; if (t.prioridade === 'alta') meta.push(['prioridade alta', 'alta']); if (t.prazo) meta.push(fmtPrazo(t.prazo));
-      if (meta.length) { const m = el('div', 'meta'); meta.forEach(([x, c]) => m.append(el('span', c, x))); corpo.append(m); }
+      const chips = []; if (t.prioridade === 'alta') chips.push(['prioridade alta', 'alta']); if (t.prazo) chips.push(fmtPrazo(t.prazo));
+      if (chips.length) { const m = el('div', 'chips'); chips.forEach(([x, c]) => m.append(el('span', 'chip ' + c, x))); corpo.append(m); }
       const rm = el('button', 'rm', '✕'); rm.type = 'button'; rm.title = 'Remover'; rm.setAttribute('aria-label', 'Remover: ' + t.texto); rm.onclick = () => remover(t);
       row.onclick = ev => { if (ev.target === row || ev.target.closest('.corpo')) { sel = i; marcar(); } };
       row.append(ck, corpo, rm); lista.append(row);
@@ -228,7 +270,7 @@
   }
   $('entrada').addEventListener('keydown', ev => {
     if (ev.key === 'Enter') { ev.preventDefault(); adicionar(); }
-    if (ev.key === 'ArrowDown' && dados.abertas.length) { ev.preventDefault(); sel = 0; marcar(); $('entrada').blur(); $('lista').focus?.(); }
+    if (ev.key === 'ArrowDown' && dados.abertas.length) { ev.preventDefault(); sel = 0; marcar(); $('entrada').blur(); }
   });
   $('btnMais').onclick = () => $('entrada').focus();
   $('btnDesfazer').onclick = async () => { const r = await post('/api/tarefas/desfazer'); avisar(r.ok ? 'Desfeito.' : 'Nada para desfazer.', !r.ok); await carregar(); };
@@ -241,28 +283,58 @@
     if (a) { b.append(document.createTextNode(' · ')); b.append(el('span', 'r', a + (a === 1 ? ' atrasada' : ' atrasadas'))); }
   }
 
-  // ---------------------------------------------------------------- relogio / dia
+  // ---------------------------------------------------------------- hoje (relogio + sistema)
   function tick() {
     const n = new Date(), p2 = v => String(v).padStart(2, '0');
     $('hora').textContent = p2(n.getHours()) + ':' + p2(n.getMinutes());
     $('dia').textContent = n.toLocaleDateString('pt-BR', { weekday: 'long' }).split('-')[0];
-    $('data').textContent = n.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).replace(/^./, c => c.toUpperCase());
-    const pc = Math.round(((n.getHours() * 60 + n.getMinutes()) / 1440) * 100); $('barra').style.width = pc + '%'; $('pdia').textContent = pc + '%';
+    $('data').textContent = n.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
+    $('barra').style.width = Math.round(((n.getHours() * 60 + n.getMinutes()) / 1440) * 100) + '%';
   }
   tick(); setInterval(tick, 1000);
-
-  // ---------------------------------------------------------------- sistema
-  const ANEL = 163.4;
-  function anel(id, pid, v) { $(id).style.strokeDashoffset = ANEL * (1 - Math.max(0, Math.min(100, v)) / 100); $(pid).textContent = v + '%'; }
   async function sistema() {
-    try { const s = await get('/api/sistema'); anel('rCpu', 'pCpu', s.cpu); anel('rMem', 'pMem', s.mem);
+    if (oculto()) return;
+    try { const s = await get('/api/sistema');
+      $('bCpu').style.width = s.cpu + '%'; $('sCpu').textContent = s.cpu + '%'; $('bMem').style.width = s.mem + '%'; $('sMem').textContent = s.mem + '%';
       const h = Math.floor(s.uptime_s / 3600), m = Math.floor(s.uptime_s % 3600 / 60); $('up').textContent = 'Ligado há ' + (h ? h + 'h ' : '') + m + 'min'; } catch {}
   }
   sistema(); setInterval(sistema, 2500);
 
+  // ---------------------------------------------------------------- musica
+  let mus = { ativo: false }, musT0 = 0, capaId = null;
+  const mmss = s => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  const ICO_PLAY = '<path d="M8 5v14l11-7z"/>', ICO_PAUSE = '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>';
+  function renderMusica() {
+    const m = mus, vivo = !!(m && m.ativo);
+    ['mInfo', 'mProg', 'mCtl'].forEach(id => $(id).hidden = !vivo); $('capa').hidden = !(vivo && m.capa); $('mVazio').hidden = vivo;
+    if (!vivo) {
+      $('mMotivo').textContent = m && m.disponivel === false ? 'Controle de música indisponível' : 'Nada tocando';
+      $('btnAbrirSpot').hidden = !atalhosIds.includes('spotify'); $('cMusica').style.setProperty('--mc', '#26334a'); capaId = null; return;
+    }
+    $('mApp').textContent = m.app || 'Player'; $('mDot').className = m.estado === 'tocando' ? '' : 'off';
+    $('mTit').textContent = m.titulo; $('mTit').title = m.titulo; $('mArt').textContent = m.artista + (m.album ? ' · ' + m.album : '');
+    $('cMusica').style.setProperty('--mc', m.cor || '#1db954');
+    if (m.capa && capaId !== m.capa_id) { capaId = m.capa_id; $('capa').src = '/api/musica/capa?id=' + m.capa_id; }
+    $('mPPi').innerHTML = m.estado === 'tocando' ? ICO_PAUSE : ICO_PLAY;
+    $('mAnt').disabled = !m.pode.anterior; $('mProx').disabled = !m.pode.proxima; $('mPP').disabled = !m.pode.play_pause;
+    $('mDur').textContent = mmss(m.duracao_s); progresso();
+  }
+  function progresso() {
+    if (!mus.ativo) return;
+    let pos = mus.posicao_s + (mus.estado === 'tocando' ? (performance.now() - musT0) / 1000 : 0); if (mus.duracao_s) pos = Math.min(pos, mus.duracao_s);
+    $('mPos').textContent = mmss(pos); const pc = mus.duracao_s ? Math.min(100, pos / mus.duracao_s * 100) : 0;
+    $('mFill').style.width = pc + '%'; $('mBar').setAttribute('aria-valuenow', Math.round(pc));
+  }
+  async function lerMusica() { if (oculto()) return; try { mus = await get('/api/musica'); musT0 = performance.now(); renderMusica(); } catch {} }
+  const ctl = acao => async () => { await post('/api/musica/acao', { acao }); setTimeout(lerMusica, 350); };
+  $('mAnt').onclick = ctl('anterior'); $('mPP').onclick = ctl('play_pause'); $('mProx').onclick = ctl('proxima');
+  $('btnAbrirSpot').onclick = () => post('/api/acao', { acao: 'spotify' });
+  lerMusica(); setInterval(lerMusica, 1500); setInterval(progresso, 250);
+
   // ---------------------------------------------------------------- atalhos
   async function atalhos() {
     let lista = []; try { lista = await get('/api/atalhos'); } catch {}
+    atalhosIds = lista.map(a => a.id); renderMusica();
     const box = $('tiles'); box.replaceChildren();
     for (const a of lista) {
       const b = el('button', 'tile'); b.type = 'button'; b.title = a.nome;
@@ -280,6 +352,7 @@
   const NOMES = { idle: 'em espera', listening: 'ouvindo', transcribing: 'entendendo', thinking: 'trabalhando', speaking: 'falando' };
   const COR = { idle: [195, 55, 66], listening: [152, 75, 62], transcribing: [46, 90, 62], thinking: [30, 92, 60], speaking: [193, 100, 68] };
   async function poll() {
+    if (oculto()) return;
     try { status = await get('/api/status'); } catch { status = { state: 'off', rev: -1 }; }
     const st = status.state || 'idle';
     $('jest').textContent = NOMES[st] || 'desligado'; $('jreply').textContent = status.reply || 'Aperte Ctrl+Alt+J e fale.';
@@ -295,24 +368,26 @@
   for (let i = 0; i < N; i++) { const y = 1 - (i / (N - 1)) * 2, r = Math.sqrt(1 - y * y), th = i * 2.399963229728653; pts.push([Math.cos(th) * r, y, Math.sin(th) * r, Math.random() * 6.28]); }
   let lvl = 0, rot = 0, hsl = [195, 55, 66], last = performance.now(); const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
   (function frame(now) {
+    if (oculto()) { last = now; requestAnimationFrame(frame); return; }
     const dt = Math.min(8, Math.max(.2, (now - last) / 16.7)); last = now; const k = a => 1 - Math.pow(1 - a, dt);
     const st = status.state || 'idle', work = st === 'thinking' || st === 'transcribing', t = now / 1000;
     let alvo = (st === 'listening' || st === 'speaking') ? (status.level || 0) : work ? .2 + .12 * Math.sin(t * 3.2) : .05; if (REDUCE) alvo *= .3;
     lvl += (alvo - lvl) * k(.35); rot += (work ? .016 : .004) * dt * (REDUCE ? .3 : 1);
     const c = COR[st] || COR.idle; for (let i = 0; i < 3; i++) hsl[i] += (c[i] - hsl[i]) * k(.12);
-    cx.clearRect(0, 0, 184, 184); cx.fillStyle = `hsl(${hsl[0]} ${hsl[1]}% ${hsl[2]}%)`;
-    const R = 62 * (1 + lvl * .25), cr = Math.cos(rot), sr = Math.sin(rot), ci = .91, si = .41;
+    cx.clearRect(0, 0, 156, 156); cx.fillStyle = `hsl(${hsl[0]} ${hsl[1]}% ${hsl[2]}%)`;
+    const R = 52 * (1 + lvl * .25), cr = Math.cos(rot), sr = Math.sin(rot), ci = .91, si = .41;
     for (const p of pts) {
       const w = 1 + lvl * .6 * Math.sin(p[3] + t * 6 + p[1] * 5), x = p[0] * w, y = p[1] * w, z = p[2] * w;
       const x1 = x * cr + z * sr, z1 = -x * sr + z * cr, y1 = y * ci - z1 * si, z2 = y * si + z1 * ci, d = (z2 + 1.3) / 2.6;
-      cx.globalAlpha = Math.max(.06, Math.min(1, .08 + .9 * d * d)); const s = .8 + 1.8 * d; cx.fillRect(92 + x1 * R - s / 2, 92 + y1 * R - s / 2, s, s);
+      cx.globalAlpha = Math.max(.06, Math.min(1, .08 + .9 * d * d)); const s = .8 + 1.7 * d; cx.fillRect(78 + x1 * R - s / 2, 78 + y1 * R - s / 2, s, s);
     }
     cx.globalAlpha = 1; requestAnimationFrame(frame);
   })(last);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { poll(); lerMusica(); sistema(); carregar(); } });
 
   // ---------------------------------------------------------------- janela: fixar, fechar, teclado
   const fechar = () => { if (!pinned) post('/api/painel/fechar'); };
-  function setPin(on) { pinned = on; $('btnPin').setAttribute('aria-pressed', String(on)); $('pinTxt').textContent = on ? ' · fixado' : ''; try { localStorage.setItem('jv-pin', on ? '1' : '0'); } catch {} }
+  function setPin(on) { pinned = on; $('btnPin').setAttribute('aria-pressed', String(on)); $('pinTxt').textContent = on ? 'FIXADO' : ''; try { localStorage.setItem('jv-pin', on ? '1' : '0'); } catch {} }
   setPin(pinned);
   $('btnPin').onclick = () => setPin(!pinned);
   $('btnFechar').onclick = () => post('/api/painel/fechar');   // o X sempre fecha, mesmo fixado

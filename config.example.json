@@ -91,12 +91,23 @@
     "corner": "tr",
     "atalhos": [
       {
+        "id": "spotify",
+        "nome": "Spotify",
+        "tipo": "app",
+        "alvo": "shell:AppsFolder\\SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify",
+        "icone": "music"
+      },
+      {
         "id": "docs",
         "nome": "Docs do Claude",
         "tipo": "url",
         "alvo": "https://code.claude.com/docs",
         "icone": "link"
       }
-    ]
+    ],
+    "musica": {
+      "enabled": true,
+      "app": "Spotify"
+    }
   }
 }
