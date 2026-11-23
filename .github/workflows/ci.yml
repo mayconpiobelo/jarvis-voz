@@ -16,7 +16,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Dependencias minimas (os testes nao usam microfone, modelos nem rede)
-        run: pip install numpy pytest ruff
+        run: pip install numpy pillow pytest ruff
       - name: Lint
         run: ruff check .
       - name: Testes
