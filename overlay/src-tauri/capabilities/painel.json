@@ -1,0 +1,7 @@
+{
+  "identifier": "painel",
+  "description": "Deixa o painel rapido (pagina servida pelo proprio Jarvis em 127.0.0.1) mover e redimensionar a propria janela. Nada alem disso.",
+  "windows": ["painel"],
+  "remote": { "urls": ["http://127.0.0.1:8765/*", "http://localhost:8765/*"] },
+  "permissions": ["core:window:allow-start-dragging", "core:window:allow-start-resize-dragging"]
+}

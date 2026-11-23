@@ -28,7 +28,24 @@
              radial-gradient(80% 70% at 100% 100%, rgba(110,70,220,.30) 0%, transparent 62%),
              linear-gradient(160deg, #0e1726 0%, #090d16 100%);
            box-shadow: 0 24px 60px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.07);
-           display: grid; gap: 10px; grid-template-columns: 1fr 1fr; grid-template-rows: 24px 176px 168px 1fr; }
+           display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; transform-origin: 50% 40%; }
+  #shell.entra { animation: entra .22s cubic-bezier(.2,.8,.2,1); }
+  @keyframes entra { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
+  /* colunas: duas lado a lado; se a janela ficar estreita viram uma so, com rolagem */
+  .cols { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); grid-template-rows: minmax(min-content, 1fr);
+          gap: 10px; overflow-y: auto; overflow-x: hidden; margin: 0 -4px; padding: 0 4px; scrollbar-width: thin; scrollbar-color: #2a3a52 transparent; }
+  .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  @media (max-width: 640px) { .cols { grid-template-columns: minmax(0,1fr); grid-template-rows: none; } #cTarefas { flex: none; min-height: 240px; } }
+  /* alcas invisiveis nas bordas e cantos: arrastar redimensiona (so dentro do app Tauri) */
+  .rz { position: fixed; z-index: 50; }
+  .rz.n, .rz.s { left: 14px; right: 14px; height: 9px; cursor: ns-resize; } .rz.n { top: 0; } .rz.s { bottom: 0; }
+  .rz.e, .rz.w { top: 14px; bottom: 14px; width: 9px; cursor: ew-resize; } .rz.e { right: 0; } .rz.w { left: 0; }
+  .rz.ne, .rz.nw, .rz.se, .rz.sw { width: 16px; height: 16px; } .rz.ne { top: 0; right: 0; cursor: nesw-resize; } .rz.nw { top: 0; left: 0; cursor: nwse-resize; }
+  .rz.se { bottom: 0; right: 0; cursor: nwse-resize; } .rz.sw { bottom: 0; left: 0; cursor: nesw-resize; }
+  body:not(.tauri) .rz { display: none; }
+  .grip { position: absolute; right: 10px; bottom: 10px; width: 12px; height: 12px; opacity: .35; pointer-events: none;
+          background: linear-gradient(135deg, transparent 52%, var(--muted) 52% 60%, transparent 60% 72%, var(--muted) 72% 80%, transparent 80%); }
+  body:not(.tauri) .grip { display: none; }
   .card { background: var(--glass); border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px; position: relative; overflow: hidden;
           box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 6px 18px rgba(0,0,0,.25); min-height: 0; }
   .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .17em; text-transform: uppercase; color: var(--ac1); opacity: .85; display: flex; align-items: center; gap: 7px; }
@@ -38,17 +55,18 @@
   .ib:hover { background: rgba(255,255,255,.09); color: var(--text); } .ib[aria-pressed="true"] { color: var(--ac1); background: rgba(77,213,255,.12); }
 
   /* ---- barra superior ---- */
-  .top { grid-column: 1 / -1; display: flex; align-items: center; gap: 9px; padding: 0 4px; position: relative; }
+  .top { flex: none; height: 24px; display: flex; align-items: center; gap: 9px; padding: 0 4px; position: relative; }
+  body.tauri .top { cursor: grab; } body.tauri .top:active { cursor: grabbing; } .top .ib { cursor: pointer; }
   .top::after { content: ""; position: absolute; left: 0; right: 0; bottom: -4px; height: 1px; background: linear-gradient(90deg, var(--ac1), var(--ac2) 55%, transparent); opacity: .5; }
   .marca { font-weight: 800; letter-spacing: .34em; font-size: 11.5px; display: flex; align-items: center; gap: 9px; }
   .marca i { width: 7px; height: 7px; border-radius: 50%; background: var(--ac1); box-shadow: 0 0 12px var(--ac1); }
   #pinTxt { color: var(--muted); font-size: 11px; letter-spacing: .1em; }
 
   /* ---- tarefas ---- */
-  #cTarefas { grid-column: 1; grid-row: 2 / 4; display: flex; flex-direction: column; }
+  #cTarefas { flex: 1; min-height: 190px; display: flex; flex-direction: column; }
   .head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
   .qtd { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 99px; background: rgba(77,213,255,.14); color: var(--ac1); }
-  #lista { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -8px; padding: 0 8px; scrollbar-width: thin; scrollbar-color: #2a3a52 transparent; }
+  #lista { flex: 1; min-height: 70px; overflow-y: auto; margin: 0 -8px; padding: 0 8px; scrollbar-width: thin; scrollbar-color: #2a3a52 transparent; }
   .tarefa { display: flex; gap: 11px; align-items: flex-start; padding: 8px 6px; border-radius: 11px; position: relative; }
   .tarefa + .tarefa { border-top: 1px solid rgba(255,255,255,.04); }
   .tarefa:hover { background: rgba(255,255,255,.04); } .tarefa:hover .rm { opacity: 1; }
@@ -78,7 +96,7 @@
   .aviso { font-size: 11px; color: var(--ok); min-height: 15px; margin-top: 4px; padding-left: 4px; } .aviso.erro { color: var(--bad); }
 
   /* ---- hoje ---- */
-  #cHoje { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; }
+  #cHoje { flex: none; display: flex; flex-direction: column; }
   .linha { display: flex; align-items: baseline; gap: 10px; }
   .hora { font-size: 46px; line-height: 1; font-weight: 700; letter-spacing: -1.5px; font-variant-numeric: tabular-nums;
           background: linear-gradient(180deg, #ffffff 20%, #9db3d0); -webkit-background-clip: text; background-clip: text; color: transparent; margin-top: 4px; }
@@ -91,7 +109,7 @@
   .up { font-size: 10.5px; color: var(--faint); margin-top: auto; padding-top: 4px; }
 
   /* ---- musica ---- */
-  #cMusica { grid-column: 2; grid-row: 3; display: grid; grid-template-columns: 76px 1fr; grid-template-rows: auto auto auto; gap: 2px 14px; align-content: center;
+  #cMusica { flex: none; display: grid; grid-template-columns: 76px 1fr; grid-template-rows: auto auto auto; gap: 2px 14px; align-content: center;
              background: linear-gradient(135deg, color-mix(in srgb, var(--mc) 42%, #0b1220) 0%, rgba(11,18,32,.55) 75%), var(--glass); transition: background .6s; }
   #capa, .capa0 { width: 76px; height: 76px; border-radius: 14px; object-fit: cover; box-shadow: 0 8px 22px rgba(0,0,0,.5); background: rgba(255,255,255,.07); display: grid; place-items: center; color: var(--faint); }
   .capa0 svg.i { width: 28px; height: 28px; }
@@ -113,7 +131,7 @@
   .mvazio button { margin-left: auto; border: 0; border-radius: 10px; padding: 7px 12px; background: rgba(255,255,255,.1); cursor: pointer; font-weight: 600; } .mvazio button:hover { background: rgba(255,255,255,.17); }
 
   /* ---- jarvis ---- */
-  #cJarvis { grid-column: 2; grid-row: 4; display: grid; grid-template-columns: 78px 1fr; gap: 4px 12px; align-items: center; align-content: start; }
+  #cJarvis { flex: 1; min-height: 150px; display: grid; grid-template-columns: 78px 1fr; gap: 4px 12px; align-items: center; align-content: start; }
   #orb { width: 78px; height: 78px; display: block; }
   .jstate { display: flex; align-items: center; gap: 7px; font-weight: 700; } .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ac1); box-shadow: 0 0 10px var(--ac1); }
   .jreply { color: var(--muted); font-size: 12px; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
@@ -123,7 +141,7 @@
   .pend { grid-column: 1 / -1; color: var(--warn); font-size: 11.5px; font-weight: 600; }
 
   /* ---- atalhos ---- */
-  #cAtalhos { grid-column: 1; grid-row: 4; }
+  #cAtalhos { flex: none; }
   .tiles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .tile { width: 70px; border: 0; background: transparent; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 2px; border-radius: 13px; font-size: 11px; font-weight: 600; color: var(--muted); transition: .15s; }
   .tile:hover { background: rgba(255,255,255,.07); color: var(--text); transform: translateY(-1px); }
@@ -138,10 +156,13 @@
 <div id="shell">
   <div class="top">
     <span class="marca"><i></i>JARVIS</span><span id="pinTxt"></span><span class="sp"></span>
+    <button class="ib" id="btnRest" title="Restaurar posição e tamanho (duplo clique na barra também)" aria-label="Restaurar posição e tamanho do painel"><svg class="i" viewBox="0 0 24 24"><path d="M4 4v6h6M20 20v-6h-6M5 14a8 8 0 0013 3M19 10A8 8 0 006 7"/></svg></button>
     <button class="ib" id="btnPin" aria-pressed="false" title="Fixar (não fecha ao clicar fora)" aria-label="Fixar painel"><svg class="i" viewBox="0 0 24 24"><path d="M12 17v5M9 3h6l-1 7 3 3H7l3-3-1-7z"/></svg></button>
     <button class="ib" id="btnFechar" title="Fechar (Esc)" aria-label="Fechar painel"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
 
+  <div class="cols">
+  <div class="col esq">
   <section class="card" id="cTarefas" aria-label="Tarefas">
     <div class="head">
       <span class="lbl"><svg class="i" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg>Tarefas</span><span class="qtd" id="nAbertas">0</span><span class="sp"></span>
@@ -155,6 +176,13 @@
     <div class="aviso" id="aviso" role="status"></div>
   </section>
 
+  <section class="card" id="cAtalhos" aria-label="Atalhos">
+    <div class="lbl"><svg class="i" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>Atalhos</div>
+    <div class="tiles" id="tiles"></div>
+  </section>
+  </div>
+
+  <div class="col dir">
   <section class="card" id="cHoje" aria-label="Hoje">
     <div class="lbl" id="dia">Hoje</div>
     <div class="linha"><div class="hora" id="hora">--:--</div><div class="dts" id="data"></div></div>
@@ -184,11 +212,6 @@
     </div>
   </section>
 
-  <section class="card" id="cAtalhos" aria-label="Atalhos">
-    <div class="lbl"><svg class="i" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>Atalhos</div>
-    <div class="tiles" id="tiles"></div>
-  </section>
-
   <section class="card" id="cJarvis" aria-label="Jarvis">
     <canvas id="orb" width="156" height="156" aria-hidden="true"></canvas>
     <div>
@@ -202,7 +225,12 @@
       <button class="pill" id="btnNova"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.5 7.2L4 20l1-4.5A8 8 0 1121 12z"/></svg>Nova conversa</button>
     </div>
   </section>
+  </div>
+  </div>
+  <i class="grip"></i>
 </div>
+<i class="rz n" data-d="North"></i><i class="rz s" data-d="South"></i><i class="rz e" data-d="East"></i><i class="rz w" data-d="West"></i>
+<i class="rz ne" data-d="NorthEast"></i><i class="rz nw" data-d="NorthWest"></i><i class="rz se" data-d="SouthEast"></i><i class="rz sw" data-d="SouthWest"></i>
 
 <script>
 (() => {
@@ -384,6 +412,32 @@
     cx.globalAlpha = 1; requestAnimationFrame(frame);
   })(last);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { poll(); lerMusica(); sistema(); carregar(); } });
+
+  // ---------------------------------------------------------------- janela: mover, redimensionar, restaurar
+  // Dentro do app Tauri a janela e nativa e sem moldura; o arrasto e o redimensionamento sao pedidos ao sistema
+  // (mesma fluidez de uma janela normal). No navegador comum nada disso aparece.
+  const TAURI = window.__TAURI_INTERNALS__ || null;
+  const rotulo = () => (TAURI && TAURI.metadata && TAURI.metadata.currentWindow && TAURI.metadata.currentWindow.label) || 'painel';
+  const nativo = (cmd, args) => { try { return Promise.resolve(TAURI.invoke('plugin:window|' + cmd, Object.assign({ label: rotulo() }, args))).catch(() => {}); } catch { return Promise.resolve(); } };
+  const restaurar = () => post('/api/painel/resetar');
+  if (TAURI) {
+    document.body.classList.add('tauri');
+    $('shell').querySelector('.top').addEventListener('mousedown', ev => {
+      if (ev.button !== 0 || ev.target.closest('button') || ev.detail > 1) return;
+      ev.preventDefault(); nativo('start_dragging');
+    });
+    document.querySelectorAll('.rz').forEach(h => h.addEventListener('mousedown', ev => {
+      if (ev.button !== 0) return; ev.preventDefault(); nativo('start_resize_dragging', { value: h.dataset.d });
+    }));
+    $('shell').querySelector('.top').addEventListener('dblclick', ev => { if (!ev.target.closest('button')) restaurar(); });
+  }
+  $('btnRest').onclick = restaurar;
+  if (!TAURI) $('btnRest').hidden = true;
+  // pequena animacao de entrada toda vez que o painel reaparece
+  let entradaT = 0;
+  function entrada() { const s = $('shell'); if (REDUCE || Date.now() - entradaT < 250) return; entradaT = Date.now(); s.classList.remove('entra'); void s.offsetWidth; s.classList.add('entra'); }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) entrada(); });
+  addEventListener('focus', entrada);
 
   // ---------------------------------------------------------------- janela: fixar, fechar, teclado
   const fechar = () => { if (!pinned) post('/api/painel/fechar'); };

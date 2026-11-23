@@ -727,7 +727,7 @@ HISTORY = BASE / "historico.jsonl"
 VIEWER = BASE / "historico.html"
 HISTORY_PORT = int(CFG.get("history_port", 8765))
 CURRENT: dict = {"state": "idle", "level": 0.0, "tools": [], "heard": "", "reply": "", "rev": 0,
-                 "painel": False, "esfera_visivel": True}
+                 "painel": False, "esfera_visivel": True, "painel_reset": 0}
 _hist_lock = threading.Lock()
 
 
@@ -785,6 +785,45 @@ def responder_musica(texto: str) -> str | None:
     except Exception:
         log.exception("erro no controle de musica")
         return None
+
+
+PAINEL_GEOM = ESTADO_DIR / "painel_geometria.json"
+
+
+def painel_geom_ler() -> dict | None:
+    """Onde o usuario deixou o painel (x, y, largura, altura em pixels fisicos). None = posicao padrao."""
+    try:
+        g = json.loads(PAINEL_GEOM.read_text(encoding="utf-8"))
+        return g if painel_geom_valida(g) else None
+    except (OSError, ValueError):
+        return None
+
+
+def painel_geom_valida(g) -> bool:
+    try:
+        x, y, w, h = (g[k] for k in ("x", "y", "w", "h"))
+    except (KeyError, TypeError):
+        return False
+    return (all(isinstance(v, int) and not isinstance(v, bool) for v in (x, y, w, h))
+            and -20000 <= x <= 20000 and -20000 <= y <= 20000 and 300 <= w <= 10000 and 300 <= h <= 10000)
+
+
+def painel_geom_salvar(g: dict) -> bool:
+    if not painel_geom_valida(g):
+        return False
+    try:
+        ESTADO_DIR.mkdir(exist_ok=True)
+        PAINEL_GEOM.write_text(json.dumps({k: g[k] for k in ("x", "y", "w", "h")}), encoding="utf-8")
+        return True
+    except OSError:
+        log.exception("nao consegui salvar a posicao do painel")
+        return False
+
+
+def painel_geom_resetar() -> None:
+    """Volta o painel ao canto e ao tamanho padrao (o app Tauri percebe pelo contador 'reset')."""
+    PAINEL_GEOM.unlink(missing_ok=True)
+    CURRENT["painel_reset"] = CURRENT.get("painel_reset", 0) + 1
 
 
 def painel_alternar(mostrar: bool | None = None) -> bool:
@@ -930,7 +969,8 @@ def start_history_server() -> None:
                 except OSError:
                     return self._send(404, b"painel.html ausente", "text/plain")
             if path == "/api/painel":
-                dados = {"show": bool(CURRENT.get("painel")), "corner": painel_cfg().get("corner", "tr")}
+                dados = {"show": bool(CURRENT.get("painel")), "corner": painel_cfg().get("corner", "tr"),
+                         "geom": painel_geom_ler(), "reset": CURRENT.get("painel_reset", 0)}
                 return self._send(200, json.dumps(dados).encode(), "application/json")
             if path == "/api/musica":
                 if not musica_ligada():
@@ -989,6 +1029,12 @@ def start_history_server() -> None:
                     return self._send(200, b'{"ok":true}', "application/json")
                 except (StopIteration, TypeError, ValueError):
                     return self._send(404, b'{"ok":false}', "application/json")
+            if path == "/api/painel/geometria":  # o app Tauri avisa quando voce move/redimensiona
+                ok = painel_geom_salvar(corpo)
+                return self._send(200 if ok else 400, json.dumps({"ok": ok}).encode(), "application/json")
+            if path == "/api/painel/resetar":
+                painel_geom_resetar()
+                return self._send(200, b'{"ok":true}', "application/json")
             if path in ("/api/painel/alternar", "/api/painel/fechar"):
                 painel_alternar(None if path.endswith("alternar") else False)
                 return self._send(200, b'{"ok":true}', "application/json")
@@ -1252,6 +1298,9 @@ def run_tray() -> None:
     def abrir_painel(_i=None, _it=None):
         painel_hotkey()
 
+    def restaurar_painel(_i=None, _it=None):
+        painel_geom_resetar()
+
     def alternar_inicio(_i=None, _it=None):
         autostart_disable() if autostart_enabled() else autostart_enable()
 
@@ -1264,6 +1313,7 @@ def run_tray() -> None:
     icon.menu = pystray.Menu(
         pystray.MenuItem(f"Falar agora ({CFG['hotkey']})", falar),
         pystray.MenuItem(f"Painel rápido ({painel_cfg().get('hotkey', 'ctrl+alt+t')})", abrir_painel),
+        pystray.MenuItem("Restaurar posição do painel", restaurar_painel),
         pystray.MenuItem("Mostrar esfera", alternar_overlay, checked=lambda _it: CURRENT.get("esfera_visivel", True)),
         pystray.MenuItem("Abrir histórico", abrir_historico),
         pystray.MenuItem("Nova conversa", nova),

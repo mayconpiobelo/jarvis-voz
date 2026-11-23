@@ -13,7 +13,7 @@ O Jarvis dá ao Claude acesso amplo ao seu computador e às suas ferramentas (e-
 4. **Servidor local endurecido**: só `127.0.0.1`; recusa `Host` diferente (DNS rebinding); POST exige JSON (força preflight CORS).
 5. **Painel e atalhos**: `/api/acao` só aceita **ids conhecidos** (ações internas ou atalhos definidos no seu `config.json`); o navegador nunca recebe nem envia o alvo (caminho/URL), e links só abrem se forem `http(s)`.
 6. **Música**: usa só o controle de mídia do Windows (nada de credenciais do Spotify). `/api/musica/acao` aceita apenas `play_pause`, `proxima` e `anterior`; pode ser desligada em `painel.musica.enabled`.
-7. **Overlay**: sem foco, cliques atravessam; não executa nada, só exibe.
+7. **Overlay**: sem foco, cliques atravessam; não executa nada, só exibe. O painel tem apenas duas permissões do Tauri (mover e redimensionar a própria janela), concedidas só a páginas de `127.0.0.1:8765`; a posição guardada (`/api/painel/geometria`) é validada (inteiros e limites) e nunca contém dados pessoais.
 8. **Repositório**: `config.json`, histórico, tarefas, tokens e modelos estão no `.gitignore`; um teste (`tests/test_privacidade.py`) falha se dado pessoal ou segredo entrar em arquivo versionado.
 
 ## Riscos residuais

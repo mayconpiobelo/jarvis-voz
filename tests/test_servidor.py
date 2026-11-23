@@ -82,12 +82,41 @@ def test_recusa_host_estranho_e_post_sem_json(srv):
     assert chamar(srv, "GET", "/nao-existe")[0] == 404
 
 
-def test_painel_mostrar_e_fechar(srv):
-    assert chamar(srv, "GET", "/api/painel")[1] == {"show": False, "corner": "tr"}
+def test_painel_mostrar_e_fechar(srv, tmp_path, monkeypatch):
+    monkeypatch.setattr(jarvis, "PAINEL_GEOM", tmp_path / "geom.json")        # nunca a posicao real do usuario
+    estado = chamar(srv, "GET", "/api/painel")[1]
+    assert (estado["show"], estado["corner"], estado["geom"]) == (False, "tr", None)
     chamar(srv, "POST", "/api/painel/alternar")
     assert chamar(srv, "GET", "/api/painel")[1]["show"] is True
     chamar(srv, "POST", "/api/painel/fechar")
     assert chamar(srv, "GET", "/api/painel")[1]["show"] is False
+
+
+def test_geometria_do_painel_salva_valida_e_restaura(srv, tmp_path, monkeypatch):
+    monkeypatch.setattr(jarvis, "PAINEL_GEOM", tmp_path / "geom.json")        # nunca a posicao real do usuario
+    assert chamar(srv, "GET", "/api/painel")[1]["geom"] is None
+    ok = {"x": -1300, "y": 40, "w": 900, "h": 640}                            # coordenada negativa = monitor a esquerda
+    assert chamar(srv, "POST", "/api/painel/geometria", ok) == (200, {"ok": True})
+    assert chamar(srv, "GET", "/api/painel")[1]["geom"] == ok
+    antes = chamar(srv, "GET", "/api/painel")[1]["reset"]
+    for ruim in ({"x": 1, "y": 2, "w": 50, "h": 600}, {"x": "a", "y": 2, "w": 800, "h": 600}, {"x": 0, "y": 0, "w": 800},
+                 {"x": 10**9, "y": 0, "w": 800, "h": 600}, {"x": 0, "y": 0, "w": True, "h": 600}, {"x": 0.5, "y": 0, "w": 800, "h": 600}):
+        assert chamar(srv, "POST", "/api/painel/geometria", ruim)[0] == 400, ruim
+    assert chamar(srv, "GET", "/api/painel")[1]["geom"] == ok                  # entradas invalidas nao alteram nada
+    assert chamar(srv, "POST", "/api/painel/geometria", ok, host="evil.example")[0] == 403
+    assert chamar(srv, "POST", "/api/painel/geometria", ok, ctype="text/plain")[0] == 415
+    assert chamar(srv, "POST", "/api/painel/resetar")[0] == 200
+    estado = chamar(srv, "GET", "/api/painel")[1]
+    assert estado["geom"] is None and estado["reset"] == antes + 1             # o app percebe a restauracao pelo contador
+
+
+def test_geometria_corrompida_vira_posicao_padrao(tmp_path, monkeypatch):
+    f = tmp_path / "geom.json"
+    monkeypatch.setattr(jarvis, "PAINEL_GEOM", f)
+    f.write_text("{ nao e json", encoding="utf-8")
+    assert jarvis.painel_geom_ler() is None
+    f.write_text('{"x": 1, "y": 2, "w": 10, "h": 10}', encoding="utf-8")        # pequeno demais
+    assert jarvis.painel_geom_ler() is None
 
 
 def test_fluxo_de_tarefas_pelo_painel(srv):

@@ -36,7 +36,7 @@ O script cria o `.venv`, instala as dependências, copia `config.example.json` �
 | Falar | `Ctrl+Alt+J` (configurável), fale; ele para quando você silencia |
 | Interromper a fala | Apertar o atalho de novo |
 | Confirmar/cancelar | Dizer “confirma”/“sim” ou “não”/“cancela” depois que ele perguntar |
-| Painel rápido | `Ctrl+Alt+T` (configurável em `painel.hotkey`); `Esc` fecha; 📌 fixa na tela; as setas navegam pelas tarefas, `Espaço` conclui, `Delete` remove, `Ctrl+Z` desfaz |
+| Painel rápido | `Ctrl+Alt+T` (configurável em `painel.hotkey`); `Esc` fecha; 📌 fixa na tela; arraste a barra de cima para mover e as bordas para redimensionar (ele lembra o lugar; duplo clique na barra restaura); as setas navegam pelas tarefas, `Espaço` conclui, `Delete` remove, `Ctrl+Z` desfaz |
 | Janela completa | Menu da bandeja → *Abrir histórico*, ou `http://127.0.0.1:8765` (`H` detalhes, `L` histórico, `T` tarefas) |
 | Nova conversa | Dizer “nova conversa” ou menu da bandeja |
 | Iniciar com o Windows | Menu da bandeja → *Iniciar com o Windows* |
