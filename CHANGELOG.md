@@ -3,6 +3,11 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); versões seguem [SemVer](https://semver.org/lang/pt-BR/).
 
 ## [Não lançado]
+### Adicionado
+- **Painel rápido** flutuante (`Ctrl+Alt+T`) com widgets de Tarefas, Hoje, Jarvis, Atalhos e Sistema; segunda janela no app Tauri, posicionada na tela do mouse.
+- Atalhos de apps e links configuráveis (`painel.atalhos`), sem expor o alvo ao navegador.
+- Entrada de texto livre nas tarefas (prazo e prioridade) e comandos digitados no painel.
+- Segundo atalho global e `esfera` mostrar/ocultar sem encerrar o app.
 
 ## [0.1.0] — 2026-11-22
 ### Adicionado

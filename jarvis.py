@@ -704,6 +704,16 @@ def voice_round() -> None:
         _busy.release()
 
 
+def painel_hotkey() -> None:
+    """Abre/fecha o painel rapido. Sem o app flutuante (overlay), abre a mesma pagina no navegador."""
+    if overlay_running():
+        painel_alternar()
+    else:
+        import webbrowser
+
+        webbrowser.open(f"http://127.0.0.1:{HISTORY_PORT}/painel")
+
+
 def on_hotkey() -> None:
     if stop_speaking():  # segundo toque interrompe a fala
         return
@@ -714,7 +724,8 @@ def on_hotkey() -> None:
 HISTORY = BASE / "historico.jsonl"
 VIEWER = BASE / "historico.html"
 HISTORY_PORT = int(CFG.get("history_port", 8765))
-CURRENT: dict = {"state": "idle", "level": 0.0, "tools": [], "heard": "", "reply": "", "rev": 0}
+CURRENT: dict = {"state": "idle", "level": 0.0, "tools": [], "heard": "", "reply": "", "rev": 0,
+                 "painel": False, "esfera_visivel": True}
 _hist_lock = threading.Lock()
 
 
@@ -746,6 +757,115 @@ def read_history(limit: int = 500) -> list[dict]:
         except json.JSONDecodeError:
             pass
     return out
+
+
+# ----------------------------------------------------------------- painel rapido (widgets flutuantes)
+def painel_cfg() -> dict:
+    return CFG.get("painel", {})
+
+
+def painel_alternar(mostrar: bool | None = None) -> bool:
+    CURRENT["painel"] = (not CURRENT.get("painel")) if mostrar is None else bool(mostrar)
+    if CURRENT["painel"]:
+        try:  # o Windows so deixa o painel (outro processo) pegar o foco se este processo autorizar
+            import ctypes
+
+            ctypes.windll.user32.AllowSetForegroundWindow(0xFFFFFFFF)  # ASFW_ANY
+        except Exception:
+            pass
+    return bool(CURRENT["painel"])
+
+
+def atalhos_painel() -> list[dict]:
+    """Atalhos do painel: acoes internas + apps/links do config. O navegador so recebe id/nome, nunca o alvo."""
+    internos = [
+        {"id": "falar", "nome": "Falar", "icone": "mic"},
+        {"id": "nova_conversa", "nome": "Nova conversa", "icone": "chat"},
+        {"id": "janela", "nome": "Janela", "icone": "window"},
+        {"id": "esfera", "nome": "Esfera", "icone": "orb"},
+    ]
+    extras = [{"id": a["id"], "nome": a.get("nome", a["id"]), "icone": a.get("icone", "app")}
+              for a in painel_cfg().get("atalhos", []) if a.get("id")]
+    return internos + extras
+
+
+def abrir_atalho(item: dict) -> dict:
+    tipo, alvo = item.get("tipo"), str(item.get("alvo", ""))
+    if tipo == "url":
+        if not re.match(r"^https?://", alvo, re.I):
+            return {"ok": False, "erro": "so http(s)"}
+        import webbrowser
+
+        webbrowser.open(alvo)
+    elif tipo == "app":
+        if alvo.lower().startswith("shell:"):
+            subprocess.Popen(["explorer.exe", alvo], creationflags=NO_WINDOW)
+        else:
+            os.startfile(expand_path(alvo))
+    else:
+        return {"ok": False, "erro": "tipo desconhecido"}
+    return {"ok": True}
+
+
+def executar_acao(acao: str) -> dict:
+    """Acoes do painel. So aceita ids conhecidos (internos ou definidos no config): nunca um alvo vindo do navegador."""
+    if acao == "falar":
+        painel_alternar(False)
+        threading.Timer(0.4, on_hotkey).start()  # deixa o painel sumir antes de abrir o microfone
+    elif acao == "nova_conversa":
+        save_state({})
+        add_history(marker="Nova conversa")
+    elif acao == "janela":
+        import webbrowser
+
+        webbrowser.open(f"http://127.0.0.1:{HISTORY_PORT}")
+    elif acao == "esfera":
+        CURRENT["esfera_visivel"] = not CURRENT.get("esfera_visivel", True)
+    elif acao == "configurar":  # tile "Adicionar" do painel: abre o config.json para editar os atalhos
+        alvo = BASE / "config.json"
+        os.startfile(str(alvo if alvo.exists() else BASE / "config.example.json"))
+    else:
+        item = next((a for a in painel_cfg().get("atalhos", []) if a.get("id") == acao), None)
+        if not item:
+            return {"ok": False, "erro": "atalho desconhecido"}
+        return abrir_atalho(item)
+    return {"ok": True}
+
+
+_cpu_prev: tuple | None = None
+
+
+def sistema_info() -> dict:
+    """CPU, memoria e tempo ligado, sem dependencias (API do Windows)."""
+    import ctypes
+    import ctypes.wintypes as wt
+
+    global _cpu_prev
+
+    class FT(ctypes.Structure):
+        _fields_ = [("lo", wt.DWORD), ("hi", wt.DWORD)]
+
+    class MS(ctypes.Structure):
+        _fields_ = [("dwLength", wt.DWORD), ("dwMemoryLoad", wt.DWORD), ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong), ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong), ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong), ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+
+    k32 = ctypes.windll.kernel32
+    idle, kern, user = FT(), FT(), FT()
+    k32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kern), ctypes.byref(user))
+    cur = tuple((f.hi << 32) | f.lo for f in (idle, kern, user))
+    cpu = 0.0
+    if _cpu_prev:
+        di, dk, du = (cur[i] - _cpu_prev[i] for i in range(3))
+        total = dk + du  # o tempo de "kernel" ja inclui o ocioso
+        cpu = max(0.0, min(100.0, (total - di) * 100.0 / total)) if total else 0.0
+    _cpu_prev = cur
+    ms = MS()
+    ms.dwLength = ctypes.sizeof(MS)
+    k32.GlobalMemoryStatusEx(ctypes.byref(ms))
+    k32.GetTickCount64.restype = ctypes.c_ulonglong
+    return {"cpu": round(cpu), "mem": int(ms.dwMemoryLoad), "uptime_s": int(k32.GetTickCount64() // 1000)}
 
 
 def start_history_server() -> None:
@@ -781,6 +901,19 @@ def start_history_server() -> None:
             if path == "/api/history":
                 data = json.dumps(read_history(), ensure_ascii=False).encode("utf-8")
                 return self._send(200, data, "application/json; charset=utf-8")
+            if path == "/painel":  # painel de widgets (janela flutuante do overlay Tauri ou navegador)
+                try:
+                    return self._send(200, (BASE / "painel.html").read_bytes(), "text/html; charset=utf-8")
+                except OSError:
+                    return self._send(404, b"painel.html ausente", "text/plain")
+            if path == "/api/painel":
+                dados = {"show": bool(CURRENT.get("painel")), "corner": painel_cfg().get("corner", "tr")}
+                return self._send(200, json.dumps(dados).encode(), "application/json")
+            if path == "/api/sistema":
+                return self._send(200, json.dumps(sistema_info()).encode(), "application/json")
+            if path == "/api/atalhos":
+                return self._send(200, json.dumps(atalhos_painel(), ensure_ascii=False).encode("utf-8"),
+                                  "application/json; charset=utf-8")
             if path == "/api/tarefas":
                 lista = tarefas_lista()
                 ab = [{"n": i, "id": t["id"], "texto": t["texto"], "prazo": t.get("prazo"),
@@ -818,6 +951,33 @@ def start_history_server() -> None:
                     return self._send(200, b'{"ok":true}', "application/json")
                 except (StopIteration, TypeError, ValueError):
                     return self._send(404, b'{"ok":false}', "application/json")
+            if path in ("/api/painel/alternar", "/api/painel/fechar"):
+                painel_alternar(None if path.endswith("alternar") else False)
+                return self._send(200, b'{"ok":true}', "application/json")
+            if path == "/api/acao":
+                r = executar_acao(str(corpo.get("acao", ""))[:40])
+                return self._send(200 if r.get("ok") else 404, json.dumps(r).encode(), "application/json")
+            if path == "/api/tarefas/adicionar":
+                import tarefas
+
+                msg, mudou = tarefas.entrada_do_painel(tarefas_lista(), str(corpo.get("texto", ""))[:300])
+                if mudou:
+                    CURRENT["rev"] += 1
+                return self._send(200, json.dumps({"ok": True, "mensagem": msg}, ensure_ascii=False).encode("utf-8"),
+                                  "application/json; charset=utf-8")
+            if path == "/api/tarefas/remover":
+                try:
+                    lista = tarefas_lista()
+                    alvo = next(t for t in lista.abertas() if t["id"] == int(corpo.get("id")))
+                    lista.remover(alvo)
+                    CURRENT["rev"] += 1
+                    return self._send(200, b'{"ok":true}', "application/json")
+                except (StopIteration, TypeError, ValueError):
+                    return self._send(404, b'{"ok":false}', "application/json")
+            if path == "/api/tarefas/desfazer":
+                ok = tarefas_lista().desfazer()
+                CURRENT["rev"] += 1
+                return self._send(200, json.dumps({"ok": ok}).encode(), "application/json")
             self._send(404, b"not found", "text/plain")
 
         def log_message(self, *a) -> None:  # silencia o log do http.server
@@ -836,7 +996,7 @@ def start_history_server() -> None:
 _VK = {"space": 0x20, "enter": 0x0D, "tab": 0x09, "esc": 0x1B, "escape": 0x1B,
        **{f"f{i}": 0x6F + i for i in range(1, 25)}}
 _MOD = {"ctrl": 0x2, "control": 0x2, "alt": 0x1, "shift": 0x4, "win": 0x8, "windows": 0x8}
-_hk_thread_id = 0
+_hk_thread_ids: list[int] = []
 
 
 def parse_hotkey(spec: str) -> tuple[int, int]:
@@ -856,7 +1016,7 @@ def parse_hotkey(spec: str) -> tuple[int, int]:
     return mods, vk
 
 
-def start_hotkey(spec: str, callback) -> bool:
+def start_hotkey(spec: str, callback, hk_id: int = 1) -> bool:
     """Registra o atalho com RegisterHotKey (sem gancho global de teclado). True se registrou."""
     import ctypes
     import ctypes.wintypes as wt
@@ -869,9 +1029,8 @@ def start_hotkey(spec: str, callback) -> bool:
     pronto = threading.Event()
 
     def loop() -> None:
-        global _hk_thread_id
-        _hk_thread_id = kernel32.GetCurrentThreadId()
-        ok = bool(user32.RegisterHotKey(None, 1, mods, vk))
+        _hk_thread_ids.append(kernel32.GetCurrentThreadId())
+        ok = bool(user32.RegisterHotKey(None, hk_id, mods, vk))
         resultado["ok"] = ok
         pronto.set()
         if not ok:
@@ -883,7 +1042,7 @@ def start_hotkey(spec: str, callback) -> bool:
                     callback()
                 except Exception:
                     log.exception("erro no atalho")
-        user32.UnregisterHotKey(None, 1)
+        user32.UnregisterHotKey(None, hk_id)
 
     threading.Thread(target=loop, daemon=True).start()
     pronto.wait(5)
@@ -893,8 +1052,8 @@ def start_hotkey(spec: str, callback) -> bool:
 def stop_hotkey() -> None:
     import ctypes
 
-    if _hk_thread_id:
-        ctypes.windll.user32.PostThreadMessageW(_hk_thread_id, 0x0012, 0, 0)  # WM_QUIT
+    for tid in _hk_thread_ids:
+        ctypes.windll.user32.PostThreadMessageW(tid, 0x0012, 0, 0)  # WM_QUIT
 
 
 # ----------------------------------------------------------------- overlay flutuante (Tauri)
@@ -1033,7 +1192,10 @@ def run_tray() -> None:
         webbrowser.open(f"http://127.0.0.1:{HISTORY_PORT}")
 
     def alternar_overlay(_i=None, _it=None):
-        overlay_stop() if overlay_running() else overlay_start()
+        CURRENT["esfera_visivel"] = not CURRENT.get("esfera_visivel", True)
+
+    def abrir_painel(_i=None, _it=None):
+        painel_hotkey()
 
     def alternar_inicio(_i=None, _it=None):
         autostart_disable() if autostart_enabled() else autostart_enable()
@@ -1046,7 +1208,8 @@ def run_tray() -> None:
 
     icon.menu = pystray.Menu(
         pystray.MenuItem(f"Falar agora ({CFG['hotkey']})", falar),
-        pystray.MenuItem("Mostrar overlay", alternar_overlay, checked=lambda _it: overlay_running()),
+        pystray.MenuItem(f"Painel rápido ({painel_cfg().get('hotkey', 'ctrl+alt+t')})", abrir_painel),
+        pystray.MenuItem("Mostrar esfera", alternar_overlay, checked=lambda _it: CURRENT.get("esfera_visivel", True)),
         pystray.MenuItem("Abrir histórico", abrir_historico),
         pystray.MenuItem("Nova conversa", nova),
         pystray.MenuItem("Iniciar com o Windows", alternar_inicio, checked=lambda _it: autostart_enabled()),
@@ -1063,6 +1226,15 @@ def run_tray() -> None:
         log.exception("atalho invalido: %s", CFG["hotkey"])
     if CFG.get("overlay", {}).get("enabled", True):
         overlay_start()
+    if painel_cfg().get("enabled", True):
+        try:
+            if start_hotkey(painel_cfg().get("hotkey", "ctrl+alt+t"), painel_hotkey, hk_id=2):
+                log.info("atalho do painel registrado: %s", painel_cfg().get("hotkey", "ctrl+alt+t"))
+            else:
+                log.error("nao consegui registrar o atalho do painel %s (ja usado por outro programa?)",
+                          painel_cfg().get("hotkey", "ctrl+alt+t"))
+        except ValueError:
+            log.exception("atalho do painel invalido")
     threading.Thread(target=get_whisper, daemon=True).start()  # aquece o STT
     if CFG.get("tts_engine") == "kokoro":
         threading.Thread(target=get_kokoro, daemon=True).start()  # aquece a voz

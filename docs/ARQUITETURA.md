@@ -25,9 +25,15 @@
 | `trava.py` | Hook de segurança do Claude Code (ver [SEGURANCA.md](SEGURANCA.md)) |
 | `tarefas.py` | Lista de tarefas (ver [TAREFAS.md](TAREFAS.md)) |
 | `historico.html` | Janela completa: esfera, fluxo Microfone→Whisper→Claude→Voz, ferramentas em uso, legendas, histórico e tarefas |
+| `painel.html` | Painel rápido de widgets (Tarefas, Hoje, Jarvis, Atalhos, Sistema); servido em `/painel` |
 | `overlay.html` + `overlay/` | Esfera flutuante (página transparente + casca Tauri sem foco e com cliques atravessando) |
 | `voz_lab.py` + `voz_lab.html` | Laboratório para ouvir e escolher a voz (porta 8766, só quando iniciado) |
 | `config.example.json` | Todas as opções, com padrões seguros |
+
+## Painel rápido
+O app Tauri tem **duas janelas**: a esfera (transparente, sem foco, cliques atravessam) e o **painel** (oculto até ser chamado). O Jarvis decide quando o painel aparece: o atalho global (`painel.hotkey`) ou o item da bandeja liga `CURRENT["painel"]`; a casca Rust consulta `GET /api/painel` (~150 ms), mostra/esconde a janela, a posiciona no canto configurado **na tela onde está o mouse** e a focaliza (o Jarvis autoriza a troca de foco com `AllowSetForegroundWindow`). O painel fecha com `Esc`, ao perder o foco (a menos que esteja fixado) ou pelo X. Sem o app (overlay desligado), o atalho abre a mesma página no navegador.
+
+Rotas locais usadas pelo painel: `/api/tarefas` (+ `/adicionar`, `/concluir`, `/remover`, `/desfazer`), `/api/sistema` (CPU, memória, tempo ligado, via API do Windows), `/api/atalhos`, `/api/acao`, `/api/painel`.
 
 ## Estados e sinais
 `idle → listening → transcribing → thinking → speaking → idle`. O serviço publica em `/api/status`: estado, **nível de áudio** (microfone ao ouvir; envelope da voz ao falar), ferramentas em uso (do stream do Claude) e se aguarda confirmação.

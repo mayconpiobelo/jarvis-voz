@@ -84,5 +84,19 @@
   "tarefas": {
     "arquivo": "tarefas.json",
     "md": "TAREFAS.md"
+  },
+  "painel": {
+    "enabled": true,
+    "hotkey": "ctrl+alt+t",
+    "corner": "tr",
+    "atalhos": [
+      {
+        "id": "docs",
+        "nome": "Docs do Claude",
+        "tipo": "url",
+        "alvo": "https://code.claude.com/docs",
+        "icone": "link"
+      }
+    ]
   }
 }

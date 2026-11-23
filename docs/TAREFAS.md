@@ -51,6 +51,9 @@ Regras de segurança do interpretador, para **não sequestrar outros pedidos**:
 ## Camada Claude (pedidos complexos)
 O Jarvis ensina o Claude a usar a mesma lista (trecho da persona): `python tarefas.py add "…" --prazo AAAA-MM-DD --prio alta`, `list`, `done REF`, `remove REF`, `undo`. Exemplos que ela cobre: *“crie três tarefas: revisar contrato, ligar para o fornecedor e fechar o mês”*, *“passe tudo que vence esta semana para a próxima”*. O Claude nunca edita o arquivo diretamente.
 
+## Painel rápido
+`Ctrl+Alt+T` abre um painel flutuante com o widget **Tarefas**: contador, campo “Nova tarefa” (texto livre: *“revisar contrato para sexta urgente”* vira prazo e prioridade; também aceita os comandos de voz digitados, como *“conclua a tarefa 2”*), círculo para concluir, ✕ para remover, desfazer (`Ctrl+Z`) e lista de concluídas. O widget **Hoje** mostra quantas vencem hoje e quantas estão atrasadas.
+
 ## Janela
 Aba **Tarefas** (tecla `T`): abertas numeradas, prioridade e prazo; clicar em uma conclui. Recentes concluídas abaixo. Atualiza sozinha quando você fala ou muda algo.
 

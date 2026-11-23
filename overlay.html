@@ -24,7 +24,7 @@
   async function poll() {
     try { status = await (await fetch('/api/status', { cache: 'no-store' })).json(); online = true; }
     catch { online = false; }
-    const active = online && (status.state !== 'idle' || status.pending);
+    const active = online && status.esfera_visivel !== false && (status.state !== 'idle' || status.pending);
     if (active) lastActive = performance.now();
   }
   setInterval(poll, 90); poll();

@@ -339,6 +339,29 @@ def responder(texto: str, lista: Tarefas) -> str | None:
     return None
 
 
+def adicionar_livre(lista: Tarefas, texto: str, origem: str = "painel") -> tuple[dict | None, bool]:
+    """Texto digitado no painel ('revisar contrato para sexta urgente') -> tarefa com prazo e prioridade."""
+    texto = _limpa(texto)
+    if not texto:
+        return None, False
+    limpo, prazo, prio = extrair_prazo_prioridade(texto, lista.agora().date())
+    if not limpo:
+        return None, False
+    return lista.adicionar(limpo, prazo=prazo, prioridade=prio, origem=origem)
+
+
+def entrada_do_painel(lista: Tarefas, texto: str) -> tuple[str | None, bool]:
+    """Campo 'Nova tarefa': aceita tambem os comandos de voz digitados ('conclua a tarefa 2').
+    Devolve (frase para mostrar, mudou_algo)."""
+    fala = responder(texto, lista)
+    if fala is not None:
+        return fala, True
+    t, criada = adicionar_livre(lista, texto)
+    if t is None:
+        return None, False
+    return (f"Anotado: {t['texto']}" if criada else f"Já consta na lista: {t['texto']}"), criada
+
+
 # ------------------------------------------------------------------ linha de comando
 def lista_padrao() -> Tarefas:
     cfg: dict = {}

@@ -183,6 +183,23 @@ def test_markdown_gerado(lista, tmp_path):
     assert "- [ ] 1. atualizar workload geral" in md and "2026-11-24" in md
 
 
+def test_painel_texto_livre_vira_tarefa_com_prazo_e_prioridade(lista):
+    msg, mudou = tarefas.entrada_do_painel(lista, "revisar contrato para sexta urgente")
+    assert mudou and msg.startswith("Anotado: revisar contrato")
+    t = lista.abertas()[0]
+    assert t["prazo"] == "2026-11-27" and t["prioridade"] == "alta" and t["origem"] == "painel"
+
+
+def test_painel_aceita_comandos_digitados(lista):
+    tarefas.entrada_do_painel(lista, "alfa")
+    tarefas.entrada_do_painel(lista, "beta")
+    msg, mudou = tarefas.entrada_do_painel(lista, "conclua a tarefa 1")
+    assert mudou and msg.startswith("Concluída, senhor:")
+    assert [t["texto"] for t in lista.abertas()] == ["beta"]
+    assert tarefas.entrada_do_painel(lista, "   ") == (None, False)
+    assert tarefas.entrada_do_painel(lista, "beta") [1] is False       # duplicada nao cria
+
+
 def test_cli(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(tarefas, "lista_padrao", lambda: tarefas.Tarefas(tmp_path / "t.json", agora=lambda: HOJE))
     assert tarefas.main(["add", "teste pela cli", "--prazo", "2026-12-01", "--prio", "alta"]) == 0

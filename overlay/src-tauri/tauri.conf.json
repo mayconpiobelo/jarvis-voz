@@ -21,6 +21,20 @@
         "shadow": false,
         "focus": false,
         "visible": true
+      },
+      {
+        "label": "painel",
+        "title": "Jarvis Painel",
+        "width": 780,
+        "height": 600,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": false,
+        "focus": true,
+        "visible": false
       }
     ],
     "security": {
