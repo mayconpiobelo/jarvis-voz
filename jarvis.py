@@ -1686,6 +1686,40 @@ def single_instance() -> bool:
     return k32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
 
 
+# ----------------------------------------------------------------- diagnostico de quedas
+SAIR_FLAG = ESTADO_DIR / "sair"  # existe = voce escolheu "Sair": o vigia (scripts/vigia.ps1) nao reabre o Jarvis
+_crash_fh = None
+
+
+def instalar_diagnostico() -> None:
+    """Se o Jarvis cair, o motivo fica registrado: excecoes (inclusive de threads), fim normal do processo e travamentos
+    nativos (faulthandler -> .estado/jarvis_crash.log). Antes ele sumia sem deixar rastro."""
+    import atexit
+    import faulthandler
+    import sys
+
+    global _crash_fh
+    try:
+        ESTADO_DIR.mkdir(exist_ok=True)
+        _crash_fh = open(ESTADO_DIR / "jarvis_crash.log", "a", encoding="utf-8")
+        _crash_fh.write(f"\n--- inicio {time.strftime('%Y-%m-%d %H:%M:%S')} pid={os.getpid()}\n")
+        _crash_fh.flush()
+        faulthandler.enable(file=_crash_fh, all_threads=True)
+    except OSError:
+        log.exception("nao consegui ligar o registro de travamentos")
+
+    def excecao(tp, valor, tb) -> None:
+        log.critical("excecao nao tratada", exc_info=(tp, valor, tb))
+
+    def excecao_thread(args) -> None:
+        log.critical("excecao na thread %s", args.thread.name if args.thread else "?",
+                     exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
+
+    sys.excepthook = excecao
+    threading.excepthook = excecao_thread
+    atexit.register(lambda: log.info("processo encerrando (atexit) pid=%s", os.getpid()))
+
+
 # ----------------------------------------------------------------- bandeja
 def run_tray() -> None:
     import pystray
@@ -1746,6 +1780,12 @@ def run_tray() -> None:
         autostart_disable() if autostart_enabled() else autostart_enable()
 
     def sair(i, _it=None):
+        log.info("saindo pelo menu Sair da bandeja")
+        try:
+            ESTADO_DIR.mkdir(exist_ok=True)
+            SAIR_FLAG.write_text(time.strftime("%Y-%m-%d %H:%M:%S"))  # avisa o vigia: foi de proposito
+        except OSError:
+            pass
         stop_hotkey()
         if _overlay_started_by_us:
             overlay_stop()
@@ -1789,6 +1829,7 @@ def run_tray() -> None:
         threading.Thread(target=lambda: speak("Jarvis online."), daemon=True).start()
     log.info("Jarvis ativo. Atalho: %s", CFG["hotkey"])
     icon.run()
+    log.warning("a bandeja terminou (icon.run retornou); encerrando o Jarvis")
 
 
 def main() -> None:
@@ -1810,6 +1851,9 @@ def main() -> None:
     if not single_instance():
         log.info("ja existe outro Jarvis em execucao; encerrando este")
         return
+    SAIR_FLAG.unlink(missing_ok=True)
+    instalar_diagnostico()
+    log.info("Jarvis iniciando (pid %s)", os.getpid())
     run_tray()
 
 
