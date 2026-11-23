@@ -727,11 +727,60 @@ def asks_confirmation(reply: str) -> bool:
     return "confirma" in _norm(reply[-120:])
 
 
+_ligacao_pendente: tuple[str, str, float] | None = None  # (nome, numero, ate quando vale o "confirma")
+LIGACAO_TTL = 30.0
+
+
+def tratar_ligacao(text: str):
+    """Ligacao pelo WhatsApp: pede a confirmacao por voz e so entao liga. None = nao e sobre isso;
+    senao (fala, acao_depois_de_falar | None)."""
+    global _ligacao_pendente, _pending_until
+    import whatsapp
+
+    cfg = CFG.get("whatsapp", {})
+    if not cfg.get("enabled", True):
+        return None
+    pend, _ligacao_pendente = _ligacao_pendente, None
+    if pend:
+        _pending_until = 0.0
+        nome, numero, ate = pend
+        if time.time() <= ate:
+            r = classify_confirmation(text)
+            if r == "sim":
+                def ligar() -> None:
+                    ok, frase = whatsapp.ligador_real(dry_run=bool(cfg.get("dry_run", False))).ligar(numero)
+                    log.info("ligacao WhatsApp para %s: ok=%s %s", nome, ok, frase)
+                    if frase:
+                        speak(frase)
+
+                return f"Ligando para {nome}, senhor.", ligar
+            if r == "nao":
+                return "Cancelado, senhor.", None
+        # outra frase: a pergunta caiu e o pedido segue o fluxo normal
+    nome = whatsapp.interpretar(text)
+    if not nome:
+        return None
+    achados = whatsapp.resolver(nome, cfg.get("contatos", {}))
+    if not achados:
+        return (f"Não tenho o número de {nome} na sua lista do WhatsApp, senhor. "
+                "Adicione em contatos, no arquivo de configuração."), None
+    if len(achados) > 1:
+        return "Encontrei mais de um contato: " + ", ".join(k for k, _ in achados[:4]) + ". Diga o nome completo, senhor.", None
+    chave, bruto = achados[0]
+    numero = whatsapp.normalizar_numero(bruto, str(cfg.get("ddi_padrao", "55")))
+    if not numero:
+        return f"O número de {chave} no arquivo de configuração não parece válido, senhor.", None
+    _ligacao_pendente = (chave, numero, time.time() + LIGACAO_TTL)
+    _pending_until = time.time() + LIGACAO_TTL  # a esfera mostra "aguardando confirmacao"
+    return f"Ligar para {chave} pelo WhatsApp, senhor. Confirma?", None
+
+
 def handle_text(text: str) -> None:
-    global _pending_until
+    global _pending_until, _ligacao_pendente
     low = text.lower().strip(" .!?")
     if low in {"cancelar", "cancela", "esquece", "deixa pra la", "deixa pra lá"}:
         _pending_until = 0.0
+        _ligacao_pendente = None
         tarefas_lista().pendente_prazo = None
         speak("Cancelado, senhor.")
         return
@@ -740,6 +789,21 @@ def handle_text(text: str) -> None:
         save_state({})
         add_history(marker="Nova conversa")
         speak("Conversa reiniciada, senhor.")
+        return
+    try:
+        lig = tratar_ligacao(text)
+    except Exception:
+        log.exception("erro na ligacao pelo WhatsApp")
+        lig = None
+    if lig is not None:
+        fala, depois = lig
+        CURRENT.update(heard=text, reply=fala, tools=[{"id": "whatsapp", "label": "WhatsApp", "done": True}])
+        add_history(pergunta=text, resposta=fala)
+        _status_cb("speaking")
+        log.info("whatsapp: %s -> %s", text, fala)
+        speak(fala)
+        if depois:
+            depois()
         return
     # Se o Jarvis acabou de pedir "Confirma, senhor?", "sim/confirma" libera so aquela acao
     confirm = classify_confirmation(text) if time.time() < _pending_until else None

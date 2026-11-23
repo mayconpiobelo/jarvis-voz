@@ -14,6 +14,7 @@ PADROES = {
     "e-mail corporativo": re.compile(r"[\w.+-]+@(?:[\w-]+\.)*" + "dbs" + "tec" + r"\.com\.br", re.I),
     "nome do dono": re.compile("may" + "con|pio" + "belo", re.I),
     "empresa": re.compile("dbs" + r"\s?tec", re.I),
+    "telefone celular": re.compile(r"(?<!\d)(?:\+?55\s?)?\(?\d{2}\)?\s?9(?!0000)\d{4}[-\s]?\d{4}(?!\d)"),
     "chave de API da Anthropic": re.compile(r"sk-ant-[A-Za-z0-9_-]{10,}"),
     "token do GitHub": re.compile(r"gh[pousr]_[A-Za-z0-9]{30,}"),
     "chave AWS": re.compile(r"AKIA[0-9A-Z]{16}"),

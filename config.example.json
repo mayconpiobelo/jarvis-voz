@@ -87,6 +87,14 @@
     "md": "TAREFAS.md",
     "perguntar_prazo": true
   },
+  "whatsapp": {
+    "enabled": true,
+    "ddi_padrao": "55",
+    "dry_run": false,
+    "contatos": {
+      "maria": "(11) 90000-0000"
+    }
+  },
   "painel": {
     "enabled": true,
     "hotkey": "ctrl+alt+t",

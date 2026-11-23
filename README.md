@@ -44,6 +44,9 @@ O script cria o `.venv`, instala as dependências, copia `config.example.json` �
 ### Música por voz
 “pausa a música” · “continua a música” · “próxima música” · “música anterior” · “o que está tocando”. Funciona com o Spotify (inclusive o da Microsoft Store) e com qualquer player que apareça no controle de mídia do Windows, **sem login nem chave de API**. Pedidos como “toca uma música do Queen” seguem para o Claude (o Jarvis não busca faixas).
 
+### Ligação pelo WhatsApp
+“Jarvis, liga para a Maria no WhatsApp” → o Jarvis pergunta *“Ligar para Maria pelo WhatsApp, senhor. Confirma?”* e **só liga depois do seu “confirma”**. Cadastre os contatos em `whatsapp.contatos` do `config.json` (`"maria": "(11) 90000-0000"`; fica fora do git). Ele abre a conversa pelo número e aperta o atalho de ligação de voz do WhatsApp Desktop (`Ctrl+Shift+C`), só se o WhatsApp estiver em primeiro plano e sem jogo em tela cheia. Com `"dry_run": true` ele faz tudo menos apertar a tecla. Veja [docs/SEGURANCA.md](docs/SEGURANCA.md).
+
 ### Tarefas por voz
 “insira: *texto* na lista de tarefas” · “quais são as minhas tarefas” · “conclua a tarefa 2” · “remova a tarefa do contrato” · “desfazer”. Detalhes em [docs/TAREFAS.md](docs/TAREFAS.md).
 
