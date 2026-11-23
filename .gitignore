@@ -1,0 +1,42 @@
+# ---- Dados pessoais e estado local (NUNCA versionar) ----
+# (ancorados na raiz com "/": nao pegam arquivos de mesmo nome dentro de docs/ etc.)
+/config.json
+/tarefas.json
+/tarefas.bak
+/tarefas.tmp
+/TAREFAS.md
+/historico.jsonl
+/state.json
+/ultima_resposta.md
+/jarvis.log
+/.estado/
+
+# ---- Modelos baixados (use scripts/baixar-modelos.ps1) ----
+/models/
+*.onnx
+*.safetensors
+*.pt
+*.wav
+
+# ---- Python ----
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# ---- Overlay (Tauri/Rust) ----
+/overlay/src-tauri/target/
+/overlay/src-tauri/gen/
+node_modules/
+
+# ---- Experimentos e lixo de editor ----
+/tts-lab/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.tmp

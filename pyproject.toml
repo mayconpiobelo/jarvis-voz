@@ -1,0 +1,23 @@
+[project]
+name = "jarvis-voz"
+version = "0.1.0"
+description = "Assistente de voz para Windows: Whisper + Claude Code + Kokoro, com esfera flutuante, trava de confirmação e lista de tarefas."
+requires-python = ">=3.11"
+readme = "README.md"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 130
+target-version = "py311"
+extend-exclude = ["overlay", "models", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+ignore = [
+  "E501",   # linhas longas: o projeto tem textos de persona e regex extensos
+  "E701", "E702", "E731",  # estilo compacto em scripts curtos
+  "B008",
+]

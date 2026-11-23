@@ -1,0 +1,8 @@
+# Dependencias de execucao do Jarvis (Windows 10/11, Python 3.11 a 3.13)
+faster-whisper>=1.0        # fala -> texto, local
+kokoro-onnx>=0.4           # texto -> fala, local (modelos: scripts/baixar-modelos.ps1)
+sounddevice>=0.4           # microfone e reproducao de audio
+soundfile>=0.12
+numpy>=1.24
+pystray>=0.19              # icone na bandeja do Windows
+pillow>=10.0

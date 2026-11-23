@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  testes:
+    name: Testes e lint (Python)
+    runs-on: windows-latest       # o Jarvis usa APIs do Windows (winsound, RegisterHotKey)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Dependencias minimas (os testes nao usam microfone, modelos nem rede)
+        run: pip install numpy pytest ruff
+      - name: Lint
+        run: ruff check .
+      - name: Testes
+        run: python -m pytest
+
+  overlay:
+    name: Overlay compila (Rust/Tauri)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo check
+        run: cargo check --locked --manifest-path overlay/src-tauri/Cargo.toml
