@@ -110,6 +110,18 @@ def test_geometria_do_painel_salva_valida_e_restaura(srv, tmp_path, monkeypatch)
     assert estado["geom"] is None and estado["reset"] == antes + 1             # o app percebe a restauracao pelo contador
 
 
+def test_falar_pelo_painel_nao_fecha_o_painel(srv, monkeypatch):
+    chamadas = []
+    monkeypatch.setattr(jarvis, "on_hotkey", lambda: chamadas.append("microfone"))
+    chamar(srv, "POST", "/api/painel/alternar")
+    assert chamar(srv, "GET", "/api/painel")[1]["show"] is True
+    assert chamar(srv, "POST", "/api/acao", {"acao": "falar"})[0] == 200
+    time.sleep(0.7)                                                                   # o microfone abre depois de 0,4 s
+    assert chamadas == ["microfone"]
+    assert chamar(srv, "GET", "/api/painel")[1]["show"] is True                       # o painel continua aberto
+    chamar(srv, "POST", "/api/painel/fechar")
+
+
 def test_esfera_do_painel_liga_mostra_um_instante_e_desliga(srv):
     jarvis.CURRENT["esfera_visivel"] = True
     st, r = chamar(srv, "POST", "/api/acao", {"acao": "esfera"})            # desliga

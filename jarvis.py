@@ -977,8 +977,8 @@ def esfera_alternar() -> bool:
 def executar_acao(acao: str) -> dict:
     """Acoes do painel. So aceita ids conhecidos (internos ou definidos no config): nunca um alvo vindo do navegador."""
     if acao == "falar":
-        painel_alternar(False)
-        threading.Timer(0.4, on_hotkey).start()  # deixa o painel sumir antes de abrir o microfone
+        # o painel continua aberto (a esfera aparece na mesma tela dele); o pequeno atraso deixa o clique terminar
+        threading.Timer(0.4, on_hotkey).start()
     elif acao == "nova_conversa":
         save_state({})
         add_history(marker="Nova conversa")
