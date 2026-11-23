@@ -47,6 +47,11 @@ O script cria o `.venv`, instala as dependências, copia `config.example.json` �
 ### Ligação pelo WhatsApp
 “Jarvis, liga para a Maria no WhatsApp” → o Jarvis pergunta *“Ligar para Maria pelo WhatsApp, senhor. Confirma?”* e **só liga depois do seu “confirma”**. Cadastre os contatos em `whatsapp.contatos` do `config.json` (`"maria": "(11) 90000-0000"`; fica fora do git). Ele abre a conversa pelo número e aperta o atalho de ligação de voz do WhatsApp Desktop (`Ctrl+Shift+C`), só se o WhatsApp estiver em primeiro plano e sem jogo em tela cheia. Com `"dry_run": true` ele faz tudo menos apertar a tecla. Veja [docs/SEGURANCA.md](docs/SEGURANCA.md).
 
+### Velocidade das respostas
+- **Claude já aberto**: o Jarvis abre o Claude Code quando você aperta o atalho (enquanto ainda fala) e o mantém aberto entre os pedidos; ele fecha sozinho depois de 20 min sem uso. Uma pergunta simples cai de ~6 s para ~2–3 s. Em `config.json`: `claude_persistente` (padrão `true`), `claude_idle_minutes` (padrão `20`; o Claude aberto usa ~300 MB), e, se quiser, `claude_model` e `claude_effort` (`low`/`medium`/`high`).
+- **Trava rápida**: a verificação de segurança antes de cada ferramenta virou uma chamada de ~30 ms ao próprio serviço (antes ~1,7 s por ferramenta).
+- **Respostas na hora, sem o Claude**: tarefas, música, “que horas são” e “que dia é hoje”.
+
 ### Tarefas por voz
 “insira: *texto* na lista de tarefas” · “quais são as minhas tarefas” · “conclua a tarefa 2” · “remova a tarefa do contrato” · “desfazer”. Detalhes em [docs/TAREFAS.md](docs/TAREFAS.md).
 

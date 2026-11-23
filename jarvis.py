@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import queue
 import os
 import re
 import subprocess
@@ -486,9 +487,16 @@ def hook_settings() -> str | None:
     """Config extra do Claude Code: roda a trava antes de cada ferramenta."""
     if CFG.get("allow_outward_actions") or not CFG.get("confirm_by_voice"):
         return None
-    py = (BASE / ".venv" / "Scripts" / "python.exe").as_posix()
-    trava = (BASE / "trava.py").as_posix()
-    cmd = f'"{py}" "{trava}"'
+    if CFG.get("trava_via_servico", True):
+        # Rapido: o curl (~30 ms) pergunta ao proprio servico do Jarvis, que ja tem a trava carregada. Iniciar o Python a
+        # cada ferramenta custava ~1,7 s. Falha FECHADA: --fail faz o curl sair com erro se o servico responder mal ou nao
+        # responder, e o "|| exit 2" transforma isso em "barrado".
+        cmd = (f'curl.exe -s --fail -m 8 --data-binary @- -H "Content-Type: application/json" '
+               f"http://127.0.0.1:{HISTORY_PORT}/api/trava || exit 2")
+    else:
+        py = (BASE / ".venv" / "Scripts" / "python.exe").as_posix()
+        trava = (BASE / "trava.py").as_posix()
+        cmd = f'"{py}" "{trava}"'
     return json.dumps(
         {"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": cmd}]}]}}
     )
@@ -519,8 +527,15 @@ def tool_label(name: str) -> str:
     return "Usando " + base.replace("_", " ")
 
 
-def ask_claude(text: str, confirmed: bool = False) -> str:
-    state = load_state()
+def _claude_env() -> dict:
+    """Usa so o login gravado do CLI: remove variaveis herdadas do app/sessao pai (ex.: ANTHROPIC_BASE_URL,
+    CLAUDE_CODE_*), mantendo um token explicito, se houver."""
+    keep = {"CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"}
+    return {k: v for k, v in os.environ.items() if k in keep or not re.match(r"^(CLAUDE|ANTHROPIC)", k, re.I)}
+
+
+def _claude_args(state: dict) -> tuple[list[str], str]:
+    """Flags do Claude Code (sem a entrada) e o id da sessao."""
     sid = state.get("session_id")
     args = [
         expand_path(CFG["claude_exe"]),
@@ -536,24 +551,237 @@ def ask_claude(text: str, confirmed: bool = False) -> str:
     settings = hook_settings()
     if settings:
         args += ["--settings", settings]
+    if CFG.get("claude_model"):
+        args += ["--model", str(CFG["claude_model"])]
+    if CFG.get("claude_effort"):
+        args += ["--effort", str(CFG["claude_effort"])]
     if sid and state.get("started"):
         args += ["--resume", sid]
     else:
         sid = sid or str(uuid.uuid4())
         args += ["--session-id", sid]
+    return args, sid
 
-    # Usa so o login gravado do CLI: remove variaveis herdadas do app/sessao pai
-    # (ex.: ANTHROPIC_BASE_URL, CLAUDE_CODE_*), mantendo um token explicito, se houver.
-    keep = {"CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"}
-    env = {
-        k: v
-        for k, v in os.environ.items()
-        if k in keep or not re.match(r"^(CLAUDE|ANTHROPIC)", k, re.I)
-    }
+
+def _acompanhar_evento(ev: dict) -> dict | None:
+    """Mostra as ferramentas em uso (esfera/painel); devolve o evento se for o resultado final."""
+    kind = ev.get("type")
+    if kind == "assistant":
+        for blk in (ev.get("message") or {}).get("content") or []:
+            if isinstance(blk, dict) and blk.get("type") == "tool_use":
+                CURRENT["tools"].append({"id": blk.get("id"), "label": tool_label(blk.get("name", "")), "done": False})
+    elif kind == "user":
+        for blk in (ev.get("message") or {}).get("content") or []:
+            if isinstance(blk, dict) and blk.get("type") == "tool_result":
+                for t in CURRENT["tools"]:
+                    if t["id"] == blk.get("tool_use_id"):
+                        t["done"] = True
+    elif kind == "result":
+        return ev
+    return None
+
+
+def _preso_ao_servico(proc: subprocess.Popen) -> None:
+    """Windows: o processo do Claude morre junto com o Jarvis (um Claude aberto nao pode sobrar se o servico cair)."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class Basic(ctypes.Structure):
+            _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+                        ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                        ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                        ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD), ("SchedulingClass", wintypes.DWORD)]
+
+        class Io(ctypes.Structure):
+            _fields_ = [(n, ctypes.c_ulonglong) for n in ("r", "w", "o", "rb", "wb", "ob")]
+
+        class Ext(ctypes.Structure):
+            _fields_ = [("Basic", Basic), ("Io", Io), ("ProcessMemoryLimit", ctypes.c_size_t),
+                        ("JobMemoryLimit", ctypes.c_size_t), ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                        ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+        k = ctypes.windll.kernel32
+        job = k.CreateJobObjectW(None, None)
+        info = Ext()
+        info.Basic.LimitFlags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        k.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info))
+        k.AssignProcessToJobObject(job, int(proc._handle))  # type: ignore[attr-defined]
+        SessaoClaude._jobs.append(job)  # o handle precisa viver tanto quanto o servico
+    except Exception:
+        log.exception("nao consegui prender o Claude ao servico")
+
+
+class SessaoClaude:
+    """Mantem o Claude Code aberto entre os pedidos (--input-format stream-json): sem os ~2 s de abertura a cada fala.
+    Abre quando voce aperta o atalho (enquanto ainda fala) e fecha sozinho depois de um tempo parado."""
+
+    _jobs: list = []
+    INTERVALO_VIGIA = 15.0  # segundos entre as checagens de inatividade
+
+    def __init__(self) -> None:
+        self.proc: subprocess.Popen | None = None
+        self.fila: queue.Queue = queue.Queue()
+        self.err: list[bytes] = []
+        self.uso = time.time()
+        self.lock = threading.Lock()      # um pedido por vez
+        self._abrindo = threading.Lock()
+        self._vigia: threading.Thread | None = None
+
+    def vivo(self) -> bool:
+        return self.proc is not None and self.proc.poll() is None
+
+    def abrir(self, args: list[str], env: dict) -> None:
+        with self._abrindo:
+            if self.vivo():
+                return
+            self.fechar()
+            i = args.index("-p") + 1
+            entrada = args[:i] + ["--input-format", "stream-json"] + args[i:]
+            fila: queue.Queue = queue.Queue()
+            err: list[bytes] = []
+            proc = subprocess.Popen(entrada, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    cwd=expand_path(CFG["workdir"]), env=env, creationflags=NO_WINDOW)
+            _preso_ao_servico(proc)
+
+            def ler() -> None:
+                for raw in proc.stdout:  # type: ignore[union-attr]
+                    try:
+                        fila.put(json.loads(raw))
+                    except ValueError:
+                        continue
+                fila.put(None)  # fim do fluxo: o processo terminou
+
+            threading.Thread(target=ler, daemon=True).start()
+            threading.Thread(target=lambda: err.append(proc.stderr.read()), daemon=True).start()  # type: ignore[union-attr]
+            self.proc, self.fila, self.err, self.uso = proc, fila, err, time.time()
+            log.info("Claude aberto (pid %s)", proc.pid)
+            if self._vigia is None or not self._vigia.is_alive():
+                self._vigia = threading.Thread(target=self._vigiar, daemon=True)
+                self._vigia.start()
+
+    def fechar(self) -> None:
+        proc, self.proc = self.proc, None
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+
+    def _vigiar(self) -> None:
+        """Libera a memoria do Claude depois de um tempo sem uso (ele reabre sozinho no proximo atalho)."""
+        while True:
+            time.sleep(self.INTERVALO_VIGIA)
+            if not self.vivo():
+                return
+            limite = float(CFG.get("claude_idle_minutes", 20)) * 60
+            if limite > 0 and not self.lock.locked() and time.time() - self.uso > limite:
+                log.info("Claude fechado por inatividade")
+                self.fechar()
+                return
+
+    def perguntar(self, args: list[str], env: dict, prompt: str, timeout: float) -> tuple[dict | None, str]:
+        """Envia o pedido e espera o resultado: (evento_result, erro). Reabre o processo se ele morreu antes de agir."""
+        with self.lock:
+            erro = ""
+            for _ in range(2):
+                self.abrir(args, env)
+                while not self.fila.empty():  # sobra de pedido anterior (ex.: cancelado por tempo)
+                    self.fila.get_nowait()
+                msg = {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": prompt}]}}
+                try:
+                    self.proc.stdin.write((json.dumps(msg) + "\n").encode("utf-8"))  # type: ignore[union-attr]
+                    self.proc.stdin.flush()  # type: ignore[union-attr]
+                except (OSError, ValueError, AttributeError):
+                    self.fechar()
+                    continue
+                limite = time.time() + timeout
+                while True:
+                    restante = limite - time.time()
+                    if restante <= 0:
+                        self.fechar()
+                        return None, "tempo esgotado"
+                    try:
+                        ev = self.fila.get(timeout=min(restante, 1.0))
+                    except queue.Empty:
+                        if not self.vivo():
+                            break
+                        continue
+                    if ev is None:
+                        break
+                    r = _acompanhar_evento(ev)
+                    if r is not None:
+                        self.uso = time.time()
+                        return r, ""
+                erro = b"".join(self.err).decode("utf-8", errors="replace").strip()
+                self.fechar()
+                if CURRENT["tools"]:  # ja agiu antes de cair: repetir poderia repetir a acao
+                    break
+            return None, erro or "o processo do Claude terminou sem resposta"
+
+
+_sessao = SessaoClaude()
+
+
+def aquecer_claude() -> None:
+    """Abre o Claude agora (ex.: ao apertar o atalho), para ele ja estar pronto quando a fala terminar."""
+    if not CFG.get("claude_persistente", True):
+        return
+
+    def abrir() -> None:
+        try:
+            args, _ = _claude_args(load_state())
+            _sessao.abrir(args, _claude_env())
+        except Exception:
+            log.exception("nao consegui aquecer o Claude")
+
+    threading.Thread(target=abrir, daemon=True).start()
+
+
+def reiniciar_conversa() -> None:
+    """Nova conversa: esquece a sessao e fecha o Claude aberto."""
+    save_state({})
+    _sessao.fechar()
+
+
+def _uma_vez(args: list[str], env: dict, prompt: str) -> tuple[dict | None, str]:
+    """Modo antigo (claude_persistente=false): um processo novo por pedido."""
+    proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            cwd=expand_path(CFG["workdir"]), env=env, creationflags=NO_WINDOW)
+    err_chunks: list[bytes] = []
+    threading.Thread(target=lambda: err_chunks.append(proc.stderr.read()), daemon=True).start()
+    timer = threading.Timer(int(CFG.get("timeout_seconds", 300)), proc.kill)
+    timer.start()
+    data = None
+    try:
+        try:
+            proc.stdin.write(prompt.encode("utf-8"))
+            proc.stdin.close()
+        except OSError:
+            pass
+        for raw in proc.stdout:  # eventos em tempo real: ferramentas em uso + resultado final
+            try:
+                ev = json.loads(raw)
+            except ValueError:
+                continue
+            r = _acompanhar_evento(ev)
+            if r is not None:
+                data = r
+    finally:
+        timer.cancel()
+        proc.wait()
+    return data, b"".join(err_chunks).decode("utf-8", errors="replace").strip()
+
+
+def ask_claude(text: str, confirmed: bool = False) -> str:
+    state = load_state()
+    args, sid = _claude_args(state)
+    env = _claude_env()
     log.info("pergunta: %s", text)
     from datetime import datetime
 
     agora = datetime.now().strftime("%A, %d/%m/%Y, %H:%M")
+    prompt = f"[Hora local: {agora}]\n{text}"
     # Confirmacao por voz vale so para ESTE pedido: o token e criado agora e apagado ao final.
     try:
         ESTADO_DIR.mkdir(exist_ok=True)
@@ -563,56 +791,18 @@ def ask_claude(text: str, confirmed: bool = False) -> str:
             TOKEN.unlink(missing_ok=True)  # nunca herda token de um pedido anterior
     except OSError:
         log.exception("nao consegui preparar o token de confirmacao")
-    proc = subprocess.Popen(
-        args,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        cwd=expand_path(CFG["workdir"]),
-        env=env,
-        creationflags=NO_WINDOW,
-    )
-    err_chunks: list[bytes] = []
-    threading.Thread(target=lambda: err_chunks.append(proc.stderr.read()), daemon=True).start()
-    timer = threading.Timer(int(CFG.get("timeout_seconds", 300)), proc.kill)
-    timer.start()
-    data = None
     try:
-        try:
-            proc.stdin.write(f"[Hora local: {agora}]\n{text}".encode("utf-8"))
-            proc.stdin.close()
-        except OSError:
-            pass
-        for raw in proc.stdout:  # eventos em tempo real: ferramentas em uso + resultado final
-            try:
-                ev = json.loads(raw)
-            except ValueError:
-                continue
-            kind = ev.get("type")
-            if kind == "assistant":
-                for blk in (ev.get("message") or {}).get("content") or []:
-                    if isinstance(blk, dict) and blk.get("type") == "tool_use":
-                        CURRENT["tools"].append(
-                            {"id": blk.get("id"), "label": tool_label(blk.get("name", "")), "done": False}
-                        )
-            elif kind == "user":
-                for blk in (ev.get("message") or {}).get("content") or []:
-                    if isinstance(blk, dict) and blk.get("type") == "tool_result":
-                        for t in CURRENT["tools"]:
-                            if t["id"] == blk.get("tool_use_id"):
-                                t["done"] = True
-            elif kind == "result":
-                data = ev
+        if CFG.get("claude_persistente", True):
+            data, err = _sessao.perguntar(args, env, prompt, float(CFG.get("timeout_seconds", 300)))
+        else:
+            data, err = _uma_vez(args, env, prompt)
     finally:
-        timer.cancel()
-        proc.wait()
         try:
             TOKEN.unlink(missing_ok=True)
         except OSError:
             pass
-    err = b"".join(err_chunks).decode("utf-8", errors="replace").strip()
     if data is None:
-        log.error("claude falhou (%s): %s", proc.returncode, err[:500])
+        log.error("claude falhou: %s", err[:500])
         return "Nao consegui falar com o Claude. Veja o arquivo de log."
     state.update(session_id=data.get("session_id", sid), started=True)
     save_state(state)
@@ -786,7 +976,7 @@ def handle_text(text: str) -> None:
         return
     if low in {"nova conversa", "reiniciar conversa", "limpar conversa"}:
         _pending_until = 0.0
-        save_state({})
+        reiniciar_conversa()
         add_history(marker="Nova conversa")
         speak("Conversa reiniciada, senhor.")
         return
@@ -816,6 +1006,10 @@ def handle_text(text: str) -> None:
         local, rotulo = responder_prazo_pendente(text), "Lista de tarefas"  # "Para quando?" acabou de ser perguntado?
         if local is None:
             local = responder_tarefas(text)
+        if local is None:
+            import relogio
+
+            local, rotulo = relogio.responder(text), "Relógio"
         if local is None:
             local, rotulo = responder_musica(text), "Música"
         if local is not None:
@@ -863,6 +1057,7 @@ def voice_round() -> None:
         return
     try:
         _status_cb("listening")
+        aquecer_claude()  # abre o Claude enquanto voce fala: a resposta nao paga os ~2 s de abertura
         beep(880)
         time.sleep(0.3)  # com microfone e caixas do notebook, o eco do bip nao pode entrar na calibracao do ruido
         audio = record_until_silence()
@@ -1069,7 +1264,7 @@ def executar_acao(acao: str) -> dict:
         # o painel continua aberto (a esfera aparece na mesma tela dele); o pequeno atraso deixa o clique terminar
         threading.Timer(0.4, on_hotkey).start()
     elif acao == "nova_conversa":
-        save_state({})
+        reiniciar_conversa()
         add_history(marker="Nova conversa")
     elif acao == "janela":
         import webbrowser
@@ -1207,11 +1402,40 @@ def start_history_server() -> None:
                 return self._send(200, json.dumps(CURRENT).encode(), "application/json")
             self._send(404, b"not found", "text/plain")
 
+        def _trava(self) -> None:
+            """A trava (trava.py) como servico: pergunta do hook PreToolUse do Claude. 200 + JSON = decisao; qualquer
+            outra coisa (entrada ilegivel, grande demais, erro) = erro HTTP, que o curl do hook transforma em BARRADO."""
+            try:
+                n = int(self.headers.get("Content-Length", "0"))
+                if n <= 0 or n > 4_000_000:
+                    return self._send(413, b'{"erro":"tamanho"}', "application/json")
+                dados = json.loads(self.rfile.read(n).decode("utf-8-sig", errors="replace"))
+                if not isinstance(dados, dict):
+                    raise ValueError("entrada nao e um objeto")
+            except (ValueError, OSError):
+                return self._send(400, b'{"erro":"ilegivel"}', "application/json")
+            try:
+                import trava
+
+                trava.recarregar_config()
+                resposta: dict = {}
+                try:
+                    trava.avaliar(dados)
+                except trava.Barrado as b:
+                    resposta = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                                       "permissionDecisionReason": b.mensagem}}
+            except Exception:
+                log.exception("erro na trava")
+                return self._send(500, b'{"erro":"trava"}', "application/json")
+            return self._send(200, json.dumps(resposta, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
+
         def do_POST(self) -> None:  # noqa: N802
             if self.headers.get("Host", "") not in allowed_hosts:
                 return self._send(403, b"forbidden", "text/plain")
             if "application/json" not in self.headers.get("Content-Type", ""):
                 return self._send(415, b"json only", "text/plain")  # forca preflight CORS
+            if self.path.split("?")[0] == "/api/trava":  # hook de seguranca do Claude (entrada pode ser grande)
+                return self._trava()
             corpo: dict = {}
             try:  # sempre le o corpo (senao o cliente recebe a conexao anulada); aceita so JSON pequeno
                 bruto = self.rfile.read(min(int(self.headers.get("Content-Length", "0")), 4096))

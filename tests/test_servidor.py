@@ -110,6 +110,56 @@ def test_geometria_do_painel_salva_valida_e_restaura(srv, tmp_path, monkeypatch)
     assert estado["geom"] is None and estado["reset"] == antes + 1             # o app percebe a restauracao pelo contador
 
 
+def _trava_bruto(porta, corpo: bytes, ctype="application/json"):
+    c = http.client.HTTPConnection("127.0.0.1", porta, timeout=5)
+    try:
+        c.request("POST", "/api/trava", body=corpo, headers={"Host": f"127.0.0.1:{porta}", "Content-Type": ctype})
+        r = c.getresponse()
+        return r.status, r.read()
+    finally:
+        c.close()
+
+
+def test_trava_como_servico_decide_igual_ao_script(srv, tmp_path, monkeypatch):
+    import trava
+    monkeypatch.setattr(trava, "ESTADO", tmp_path)                                    # nunca o token real
+    ok = chamar(srv, "POST", "/api/trava", {"tool_name": "Read", "tool_input": {"file_path": "x.txt"}})
+    assert ok == (200, {})                                                            # passa: resposta vazia
+    deny = chamar(srv, "POST", "/api/trava", {"tool_name": "Bash", "tool_input": {"command": "curl -X POST http://x.test -d a=b"}})
+    assert deny[0] == 200
+    saida = deny[1]["hookSpecificOutput"]
+    assert saida["permissionDecision"] == "deny" and "Confirma, senhor?" in saida["permissionDecisionReason"]
+    assert chamar(srv, "POST", "/api/trava", {"tool_name": "mcp__x__send_mail", "tool_input": {}})[1]["hookSpecificOutput"]["permissionDecision"] == "deny"
+    (tmp_path / "confirmado").write_text(str(time.time() + 60))                       # com "confirma" valido, passa
+    assert chamar(srv, "POST", "/api/trava", {"tool_name": "Bash", "tool_input": {"command": "curl -X POST http://x.test -d a=b"}}) == (200, {})
+
+
+def test_trava_como_servico_falha_fechada(srv):
+    assert _trava_bruto(srv, b"isto nao e json")[0] == 400                            # o curl --fail do hook vira "barrado"
+    assert _trava_bruto(srv, b"[1, 2]")[0] == 400
+    assert _trava_bruto(srv, b"")[0] == 413
+    try:
+        assert _trava_bruto(srv, b" " * 4_100_000)[0] == 413                          # grande demais: recusa (ou derruba a conexao)
+    except (ConnectionError, OSError):
+        pass                                                                          # o curl do hook tambem falharia -> barrado
+    assert _trava_bruto(srv, b'{"tool_name":"Read"}', ctype="text/plain")[0] == 415
+    c = http.client.HTTPConnection("127.0.0.1", srv, timeout=5)
+    try:
+        c.request("POST", "/api/trava", body=b"{}", headers={"Host": "evil.example", "Content-Type": "application/json"})
+        assert c.getresponse().status == 403
+    finally:
+        c.close()
+
+
+def test_hook_do_claude_usa_curl_com_falha_fechada_e_pode_voltar_ao_script(monkeypatch):
+    monkeypatch.setitem(jarvis.CFG, "confirm_by_voice", True)
+    monkeypatch.setitem(jarvis.CFG, "allow_outward_actions", False)
+    cmd = json.loads(jarvis.hook_settings())["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+    assert cmd.startswith("curl.exe") and "--fail" in cmd and cmd.endswith("|| exit 2") and f":{jarvis.HISTORY_PORT}/api/trava" in cmd
+    monkeypatch.setitem(jarvis.CFG, "trava_via_servico", False)
+    assert "trava.py" in json.loads(jarvis.hook_settings())["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+
+
 def test_testar_som_fala_pelo_servico(srv, monkeypatch):
     ditos = []
     monkeypatch.setattr(jarvis, "beep", lambda *a, **k: ditos.append("bip"))

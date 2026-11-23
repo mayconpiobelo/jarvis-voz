@@ -46,7 +46,7 @@ def interpretar(texto: str) -> str | None:
 
 
 def normalizar_numero(bruto: str, ddi_padrao: str = "55") -> str | None:
-    """"(11) 99999-0000" -> "5511999990000". Aceita com ou sem DDI; None se nao parecer um telefone."""
+    """"(11) 90000-0000" -> "5511900000000". Aceita com ou sem DDI; None se nao parecer um telefone."""
     d = re.sub(r"\D", "", str(bruto or ""))
     if d.startswith("00"):
         d = d[2:]

@@ -18,6 +18,9 @@
     "outlook_update_draft"
   ],
   "timeout_seconds": 300,
+  "claude_persistente": true,
+  "claude_idle_minutes": 20,
+  "trava_via_servico": true,
   "stt_model": "small",
   "stt_language": "pt",
   "mic_device": null,

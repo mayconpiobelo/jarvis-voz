@@ -25,12 +25,29 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent
 ESTADO = BASE / ".estado"
 CFG: dict = {}
-for _nome in ("config.json", "config.example.json"):  # sem config: so aplica as regras gerais
-    try:
-        CFG = json.loads((BASE / _nome).read_text(encoding="utf-8"))
-        break
-    except Exception:
-        continue
+
+
+def recarregar_config() -> None:
+    """(Re)le config.json; sem config, so aplica as regras gerais. O servico do Jarvis chama isto a cada pedido."""
+    global CFG
+    CFG = {}
+    for nome in ("config.json", "config.example.json"):
+        try:
+            CFG = json.loads((BASE / nome).read_text(encoding="utf-8"))
+            return
+        except Exception:
+            continue
+
+
+recarregar_config()
+
+
+class Barrado(Exception):
+    """A acao precisa de confirmacao por voz (ou a entrada nao pode ser verificada): `mensagem` orienta o Claude."""
+
+    def __init__(self, mensagem: str) -> None:
+        super().__init__(mensagem)
+        self.mensagem = mensagem
 
 # Ferramentas nativas que sempre passam (somente leitura / organizacao interna)
 LIVRES = {
@@ -100,13 +117,11 @@ def confirmado() -> bool:
 
 def barrar(o_que: str) -> None:
     log(f"BARRADO: {o_que}")
-    msg = (
+    raise Barrado(
         f"TRAVA DO JARVIS: {o_que} precisa da confirmacao do usuario por voz. NAO execute agora e NAO tente "
         "outro caminho para fazer a mesma coisa. Responda em UMA frase dizendo exatamente o que vai fazer "
         "(com destinatario ou destino, quando houver) e termine com 'Confirma, senhor?'."
     )
-    sys.stderr.buffer.write(msg.encode("utf-8"))
-    sys.exit(2)
 
 
 def dentro_do_usuario(caminho: str) -> bool:
@@ -117,19 +132,8 @@ def dentro_do_usuario(caminho: str) -> bool:
     return os.path.normcase(real).startswith(os.path.normcase(casa) + os.sep) or os.path.normcase(real) == os.path.normcase(casa)
 
 
-def main() -> None:
-    try:
-        dados = json.loads(sys.stdin.buffer.read().decode("utf-8-sig", errors="replace"))
-        if not isinstance(dados, dict):
-            raise ValueError("entrada nao e um objeto")
-    except ValueError as e:
-        # Falha FECHADA: se nao da para entender o pedido, nao deixa passar.
-        log(f"ENTRADA ILEGIVEL, barrado por seguranca: {e}")
-        sys.stderr.buffer.write(
-            "TRAVA DO JARVIS: nao consegui verificar esta acao e por seguranca ela foi barrada. "
-            "Avise o usuario em uma frase e nao tente outro caminho.".encode("utf-8")
-        )
-        sys.exit(2)
+def avaliar(dados: dict) -> None:
+    """Decide uma ferramenta: volta sem nada se pode passar; levanta Barrado se precisa de confirmacao."""
     nome = dados.get("tool_name", "")
     entrada = dados.get("tool_input") or {}
 
@@ -162,6 +166,28 @@ def main() -> None:
         if any(re.search(p, cmd, re.I | re.S) for p in SHELL_PEDE_CONFIRMACAO):
             barrar("esse comando (envia dados para fora ou altera o sistema)")
         return
+
+
+MSG_ILEGIVEL = ("TRAVA DO JARVIS: nao consegui verificar esta acao e por seguranca ela foi barrada. "
+                "Avise o usuario em uma frase e nao tente outro caminho.")
+
+
+def main() -> None:
+    """Modo linha de comando (hook como script): le o JSON do stdin; codigo 2 + stderr = barrado."""
+    try:
+        dados = json.loads(sys.stdin.buffer.read().decode("utf-8-sig", errors="replace"))
+        if not isinstance(dados, dict):
+            raise ValueError("entrada nao e um objeto")
+    except ValueError as e:
+        # Falha FECHADA: se nao da para entender o pedido, nao deixa passar.
+        log(f"ENTRADA ILEGIVEL, barrado por seguranca: {e}")
+        sys.stderr.buffer.write(MSG_ILEGIVEL.encode("utf-8"))
+        sys.exit(2)
+    try:
+        avaliar(dados)
+    except Barrado as b:
+        sys.stderr.buffer.write(b.mensagem.encode("utf-8"))
+        sys.exit(2)
 
 
 if __name__ == "__main__":

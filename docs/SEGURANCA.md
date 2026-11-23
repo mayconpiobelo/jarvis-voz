@@ -10,6 +10,7 @@ O Jarvis dá ao Claude acesso amplo ao seu computador e às suas ferramentas (e-
    - exige “confirma”: enviar e-mail/Teams, criar/alterar convites, alterar o SharePoint, escrever fora da pasta do usuário ou em `AppData`/`.claude`/`.ssh`, comandos que enviam dados à rede, agendamentos, e **qualquer ferramenta MCP desconhecida**;
    - o “confirma” vale **só para aquele pedido** (token `.estado/confirmado`, expira em 2 min, apagado ao fim);
    - **falha fechada**: entrada ilegível = barrado.
+   - a trava roda **dentro do serviço** (o hook é um `curl` de ~30 ms para `127.0.0.1:8765/api/trava`, em vez de iniciar o Python a cada ferramenta, que levava ~1,7 s): `--fail` + `|| exit 2` garantem que, se o serviço não responder, responder erro ou receber algo ilegível/grande demais, a ferramenta é **barrada**. `"trava_via_servico": false` volta ao script `trava.py`.
 4. **Servidor local endurecido**: só `127.0.0.1`; recusa `Host` diferente (DNS rebinding); POST exige JSON (força preflight CORS).
 5. **Painel e atalhos**: `/api/acao` só aceita **ids conhecidos** (ações internas ou atalhos definidos no seu `config.json`); o navegador nunca recebe nem envia o alvo (caminho/URL), e links só abrem se forem `http(s)`.
 6. **Música**: usa só o controle de mídia do Windows (nada de credenciais do Spotify). `/api/musica/acao` aceita apenas `play_pause`, `proxima` e `anterior`; pode ser desligada em `painel.musica.enabled`.
