@@ -1,6 +1,8 @@
 """Musica: leitura, controle e comandos de voz, com um player falso (sem Spotify, sem Windows, sem rede)."""
 import io
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -78,6 +80,82 @@ def test_backend_com_erro_nao_derruba():
         s = musica.snapshot(validade=0)
         assert s["disponivel"] and not s["ativo"]
     finally:
+        musica.definir_backend(None)
+
+
+class Travado(Falso):
+    """Como o SMTC do Windows quando para de responder: a chamada nunca volta."""
+
+    def __init__(self):
+        super().__init__()
+        self.solta = threading.Event()
+        self.chamadas = 0
+
+    def snapshot(self, preferir):
+        self.chamadas += 1
+        self.solta.wait(30)
+        return super().snapshot(preferir)
+
+    def acao(self, acao, preferir):
+        self.chamadas += 1
+        self.solta.wait(30)
+        return True
+
+
+def test_windows_travado_nao_pendura_o_painel(monkeypatch):
+    # Bug real: o controle de midia do Windows travou, cada consulta do painel ficou pendurada para sempre, o navegador
+    # esgotou as 6 conexoes e o painel inteiro parou (estado "desligado", tarefas que nao entram).
+    monkeypatch.setattr(musica, "LIMITE", 0.2)
+    monkeypatch.setattr(musica, "PAUSA", 0.6)
+    t = Travado()
+    musica.definir_backend(t)
+    try:
+        t0 = time.monotonic()
+        s = musica.snapshot(validade=0)
+        assert time.monotonic() - t0 < 1.5                                # desistiu no prazo
+        assert s["disponivel"] is False and "não respondeu" in s["motivo"]
+        t0 = time.monotonic()
+        for _ in range(50):                                               # varias consultas seguidas: respondem na hora
+            assert musica.snapshot(validade=0)["disponivel"] is False
+        assert time.monotonic() - t0 < 0.5 and t.chamadas == 1            # e sem abrir uma thread presa por consulta
+        assert musica.acao("proxima")["ok"] is False                      # o botao tambem nao pendura
+        time.sleep(0.7)                                                   # passou a pausa: tenta de novo
+        t.solta.set()
+        assert musica.snapshot(validade=0)["ativo"] is True               # e volta ao normal quando o Windows volta
+    finally:
+        t.solta.set()
+        musica.definir_backend(None)
+
+
+def test_consultas_simultaneas_com_windows_travado_voltam_todas_no_prazo(monkeypatch):
+    monkeypatch.setattr(musica, "LIMITE", 0.2)
+    t = Travado()
+    musica.definir_backend(t)
+    resultados = []
+    try:
+        ths = [threading.Thread(target=lambda: resultados.append(musica.snapshot(validade=0))) for _ in range(12)]
+        t0 = time.monotonic()
+        for th in ths:
+            th.start()
+        for th in ths:
+            th.join(5)
+        assert time.monotonic() - t0 < 4 and len(resultados) == 12 and not any(th.is_alive() for th in ths)
+        assert all(r["disponivel"] is False for r in resultados)
+    finally:
+        t.solta.set()
+        musica.definir_backend(None)
+
+
+def test_acao_com_windows_travado_responde_com_erro(monkeypatch):
+    monkeypatch.setattr(musica, "LIMITE", 0.2)
+    t = Travado()
+    musica.definir_backend(t)
+    try:
+        t0 = time.monotonic()
+        r = musica.acao("play_pause")
+        assert r["ok"] is False and "não respondeu" in r["erro"] and time.monotonic() - t0 < 1.5
+    finally:
+        t.solta.set()
         musica.definir_backend(None)
 
 

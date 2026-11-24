@@ -291,8 +291,11 @@
     plus: '<path d="M12 5v14M5 12h14"/>',
   };
   const svg = n => `<svg class="i" viewBox="0 0 24 24">${ICONS[n] || ICONS.app}</svg>`;
-  const post = (path, body = {}) => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()).catch(() => ({}));
-  const get = path => fetch(path, { cache: 'no-store' }).then(r => r.json());
+  // Toda chamada tem prazo: uma resposta que nunca vem (ex.: o controle de midia do Windows travado) nao pode ficar segurando
+  // as conexoes do navegador (limite de 6 por servidor), senao o painel inteiro para de falar com o Jarvis.
+  const post = (path, body = {}) => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(20000) }).then(r => r.json()).catch(() => ({}));
+  const get = path => fetch(path, { cache: 'no-store', signal: AbortSignal.timeout(6000) }).then(r => r.json());
+  const unico = f => { let voando = false; return async (...a) => { if (voando) return; voando = true; try { return await f(...a); } finally { voando = false; } }; };  // sem consultas empilhadas
   const oculto = () => document.hidden;
   // O app flutuante fica dias aberto com esta pagina na memoria: se o painel.html mudou no disco (atualizacao do Jarvis),
   // recarrega sozinho na proxima vez que for aberto, sem precisar reiniciar o overlay.
@@ -386,12 +389,12 @@
     $('barra').style.width = Math.round(((n.getHours() * 60 + n.getMinutes()) / 1440) * 100) + '%';
   }
   tick(); setInterval(tick, 1000);
-  async function sistema() {
+  const sistema = unico(async () => {
     if (oculto()) return;
     try { const s = await get('/api/sistema');
       $('bCpu').style.width = s.cpu + '%'; $('sCpu').textContent = s.cpu + '%'; $('bMem').style.width = s.mem + '%'; $('sMem').textContent = s.mem + '%';
       const h = Math.floor(s.uptime_s / 3600), m = Math.floor(s.uptime_s % 3600 / 60); $('up').textContent = 'Ligado há ' + (h ? h + 'h ' : '') + m + 'min'; } catch {}
-  }
+  });
   sistema(); setInterval(sistema, 2500);
 
   // ---------------------------------------------------------------- clima (o servico consulta a rede so 1x por hora)
@@ -484,7 +487,7 @@
     $('mPos').textContent = mmss(pos); const pc = mus.duracao_s ? Math.min(100, pos / mus.duracao_s * 100) : 0;
     $('mFill').style.width = pc + '%'; $('mBar').setAttribute('aria-valuenow', Math.round(pc));
   }
-  async function lerMusica() { if (oculto()) return; try { mus = await get('/api/musica'); musT0 = performance.now(); renderMusica(); } catch {} }
+  const lerMusica = unico(async () => { if (oculto()) return; try { mus = await get('/api/musica'); musT0 = performance.now(); renderMusica(); } catch {} });
   const ctl = acao => async () => { await post('/api/musica/acao', { acao }); setTimeout(lerMusica, 350); };
   $('mAnt').onclick = ctl('anterior'); $('mPP').onclick = ctl('play_pause'); $('mProx').onclick = ctl('proxima');
   $('btnAbrirSpot').onclick = () => post('/api/acao', { acao: 'spotify' });
@@ -510,7 +513,7 @@
   // ---------------------------------------------------------------- jarvis (estado + esfera)
   const NOMES = { idle: 'em espera', listening: 'ouvindo', transcribing: 'entendendo', thinking: 'trabalhando', speaking: 'falando' };
   const COR = { idle: [195, 55, 66], listening: [152, 75, 62], transcribing: [46, 90, 62], thinking: [30, 92, 60], speaking: [193, 100, 68] };
-  async function poll() {
+  const poll = unico(async () => {
     if (oculto()) return;
     try { status = await get('/api/status'); } catch { status = { state: 'off', rev: -1 }; }
     const st = status.state || 'idle';
@@ -518,7 +521,7 @@
     $('pend').hidden = !status.pending;
     const c = COR[st] || COR.idle; $('jdot').style.background = `hsl(${c[0]} ${c[1]}% ${c[2]}%)`; $('jdot').style.boxShadow = `0 0 10px hsl(${c[0]} ${c[1]}% ${c[2]}%)`;
     if (status.rev !== lastRev) { lastRev = status.rev; carregar(); }
-  }
+  });
   poll(); setInterval(poll, 450);
   $('btnFalar').onclick = () => post('/api/acao', { acao: 'falar' });
   $('btnNova').onclick = async () => { await post('/api/acao', { acao: 'nova_conversa' }); avisar('Nova conversa iniciada.'); };

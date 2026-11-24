@@ -118,6 +118,34 @@ _backend: Backend | None = None
 _indisponivel: str | None = None
 _cache: dict[str, Any] = {"t": 0.0, "snap": None, "capa_chave": None, "capa": None, "cor": "#1db954"}
 
+# O controle de midia do Windows (SMTC) as vezes TRAVA (servico parado, PC sem memoria). Sem limite de tempo, cada consulta do
+# painel ficava pendurada segurando uma conexao; com 6 penduradas o navegador do painel para de falar com o Jarvis (estado
+# "desligado", tarefas que nao entram). Por isso toda chamada ao Windows tem prazo e, se estourar, o modulo descansa um tempo.
+LIMITE = 3.0              # segundos esperando o Windows
+PAUSA = 20.0              # depois de um travamento, nao insiste por este tempo
+MOTIVO_TRAVADO = "o controle de mídia do Windows não respondeu"
+_travado_ate = 0.0
+
+
+def _com_limite(fn, *args):
+    """Roda `fn` numa thread de lado; se o Windows nao responder em LIMITE s, desiste (a thread presa fica para tras)."""
+    saida: dict[str, Any] = {}
+
+    def alvo() -> None:
+        try:
+            saida["r"] = fn(*args)
+        except BaseException as e:  # noqa: BLE001 (repassado a quem chamou)
+            saida["e"] = e
+
+    t = threading.Thread(target=alvo, daemon=True, name="musica-smtc")
+    t.start()
+    t.join(LIMITE)
+    if t.is_alive():
+        raise TimeoutError(MOTIVO_TRAVADO)
+    if "e" in saida:
+        raise saida["e"]
+    return saida.get("r")
+
 
 def _obter_backend() -> Backend | None:
     global _backend, _indisponivel
@@ -131,8 +159,8 @@ def _obter_backend() -> Backend | None:
 
 def definir_backend(b: Backend | None) -> None:
     """Para testes: injeta um backend falso (e limpa o cache)."""
-    global _backend, _indisponivel
-    _backend, _indisponivel = b, None
+    global _backend, _indisponivel, _travado_ate
+    _backend, _indisponivel, _travado_ate = b, None, 0.0
     _cache.update(t=0.0, snap=None, capa_chave=None, capa=None)
 
 
@@ -159,12 +187,18 @@ def snapshot(preferir: str = "Spotify", validade: float = 0.8) -> dict:
     b = _obter_backend()
     if b is None:
         return {"disponivel": False, "ativo": False, "motivo": _indisponivel or "sem backend"}
+    global _travado_ate
     with _lock:
         agora = time.monotonic()
+        if agora < _travado_ate:  # o Windows travou ha pouco: responde na hora, sem pendurar quem pergunta
+            return {"disponivel": False, "ativo": False, "motivo": MOTIVO_TRAVADO}
         if _cache["snap"] is not None and agora - _cache["t"] < validade:
             return dict(_cache["snap"])
         try:
-            s = b.snapshot(preferir)
+            s = _com_limite(b.snapshot, preferir)
+        except TimeoutError:
+            _travado_ate = time.monotonic() + PAUSA
+            return {"disponivel": False, "ativo": False, "motivo": MOTIVO_TRAVADO}
         except Exception as e:
             return {"disponivel": True, "ativo": False, "motivo": f"erro: {type(e).__name__}"}
         if not s or not (s["titulo"] or s["artista"]):
@@ -175,8 +209,8 @@ def snapshot(preferir: str = "Spotify", validade: float = 0.8) -> dict:
                 dados = None
                 if s.get("tem_capa"):
                     try:
-                        dados = b.capa(preferir)
-                    except Exception:
+                        dados = _com_limite(b.capa, preferir)
+                    except Exception:   # inclui o prazo estourado: segue sem capa
                         dados = None
                 _cache.update(capa_chave=chave, capa=dados, cor=cor_dominante(dados) if dados else "#1db954")
             res = {"disponivel": True, "ativo": True, **{k: s[k] for k in ("app", "titulo", "artista", "album", "estado",
@@ -201,8 +235,14 @@ def acao(nome: str, preferir: str = "Spotify") -> dict:
     b = _obter_backend()
     if b is None:
         return {"ok": False, "erro": "midia indisponivel"}
+    global _travado_ate
+    if time.monotonic() < _travado_ate:
+        return {"ok": False, "erro": MOTIVO_TRAVADO}
     try:
-        ok = bool(b.acao(nome, preferir))
+        ok = bool(_com_limite(b.acao, nome, preferir))
+    except TimeoutError:
+        _travado_ate = time.monotonic() + PAUSA
+        return {"ok": False, "erro": MOTIVO_TRAVADO}
     except Exception as e:
         return {"ok": False, "erro": type(e).__name__}
     with _lock:
