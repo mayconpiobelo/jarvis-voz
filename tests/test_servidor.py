@@ -1,6 +1,7 @@
 """Servidor local (127.0.0.1): rotas do painel, seguranca (Host, JSON), tarefas e acoes. Sem GUI, sem microfone, sem rede."""
 import http.client
 import json
+import os
 import socket
 import sys
 import time
@@ -291,6 +292,21 @@ def test_sistema_devolve_percentuais(srv):
     time.sleep(0.2)
     s = chamar(srv, "GET", "/api/sistema")[1]
     assert 0 <= s["cpu"] <= 100 and 0 <= s["mem"] <= 100 and s["uptime_s"] > 0
+
+
+def test_painel_informa_a_versao_da_pagina_para_se_recarregar(srv, tmp_path, monkeypatch):
+    v1 = chamar(srv, "GET", "/api/painel")[1]["versao"]
+    assert isinstance(v1, int) and v1 > 0
+    pasta = tmp_path / "base"
+    pasta.mkdir()
+    (pasta / "painel.html").write_text("a", encoding="utf-8")
+    monkeypatch.setattr(jarvis, "BASE", pasta)
+    a = chamar(srv, "GET", "/api/painel")[1]["versao"]
+    (pasta / "painel.html").write_text("b", encoding="utf-8")
+    os.utime(pasta / "painel.html", ns=(a + 5_000_000_000, a + 5_000_000_000))
+    assert chamar(srv, "GET", "/api/painel")[1]["versao"] != a                    # arquivo mudou -> o painel aberto se recarrega
+    (pasta / "painel.html").unlink()
+    assert chamar(srv, "GET", "/api/painel")[1]["versao"] == 0                    # sem o arquivo: nao quebra
 
 
 def test_rota_de_clima_usa_a_cidade_do_config(srv, monkeypatch):

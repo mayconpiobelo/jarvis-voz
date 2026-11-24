@@ -1373,8 +1373,12 @@ def start_history_server() -> None:
                 except OSError:
                     return self._send(404, b"painel.html ausente", "text/plain")
             if path == "/api/painel":
+                try:  # versao da pagina: o painel aberto (overlay fica dias no ar) se recarrega quando o arquivo muda
+                    versao = (BASE / "painel.html").stat().st_mtime_ns
+                except OSError:
+                    versao = 0
                 dados = {"show": bool(CURRENT.get("painel")), "corner": painel_cfg().get("corner", "tr"),
-                         "geom": painel_geom_ler(), "reset": CURRENT.get("painel_reset", 0)}
+                         "geom": painel_geom_ler(), "reset": CURRENT.get("painel_reset", 0), "versao": versao}
                 return self._send(200, json.dumps(dados).encode(), "application/json")
             if path == "/api/musica":
                 if not musica_ligada():

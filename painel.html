@@ -294,6 +294,17 @@
   const post = (path, body = {}) => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()).catch(() => ({}));
   const get = path => fetch(path, { cache: 'no-store' }).then(r => r.json());
   const oculto = () => document.hidden;
+  // O app flutuante fica dias aberto com esta pagina na memoria: se o painel.html mudou no disco (atualizacao do Jarvis),
+  // recarrega sozinho na proxima vez que for aberto, sem precisar reiniciar o overlay.
+  let versaoPagina = null;
+  async function conferirVersao() {
+    try {
+      const v = (await get('/api/painel')).versao;
+      if (typeof v !== 'number') return;
+      if (versaoPagina === null) versaoPagina = v; else if (v !== versaoPagina) location.reload();
+    } catch {}
+  }
+  conferirVersao(); setInterval(conferirVersao, 60000);
 
   let status = { state: 'idle', rev: -1 }, dados = { abertas: [], concluidas: [] }, lastRev = -2, pinned = false, mostrarConc = false, sel = -1, focada = false, atalhosIds = [];
   try { pinned = localStorage.getItem('jv-pin') === '1'; } catch {}
@@ -531,7 +542,7 @@
     }
     cx.globalAlpha = 1; requestAnimationFrame(frame);
   })(last);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { poll(); lerMusica(); sistema(); lerUso(); lerClima(); carregar(); } });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { conferirVersao(); poll(); lerMusica(); sistema(); lerUso(); lerClima(); carregar(); } });
 
   // ---------------------------------------------------------------- janela: mover, redimensionar, restaurar
   // Dentro do app Tauri a janela e nativa e sem moldura; o arrasto e o redimensionamento sao pedidos ao sistema
