@@ -26,7 +26,9 @@
 | `tarefas.py` | Lista de tarefas (ver [TAREFAS.md](TAREFAS.md)) |
 | `historico.html` | Janela completa: esfera, fluxo Microfone→Whisper→Claude→Voz, ferramentas em uso, legendas, histórico e tarefas |
 | `musica.py` | Lê e controla o que está tocando (Spotify e outros) pelo controle de mídia do Windows (SMTC); sem login nem chave |
-| `painel.html` | Painel rápido de widgets (Tarefas, Hoje, Jarvis, Atalhos, Sistema); servido em `/painel` |
+| `clima.py` | Temperatura e condição da cidade (Open-Meteo, sem chave), com cache de 1 h; envia só as coordenadas da cidade |
+| `uso_claude.py` | Consumo do plano do Claude Code (sessão de 5 h, semana e de onde veio o gasto), com cache de 2 min; sem tocar no login (ver [SEGURANCA.md](SEGURANCA.md)) |
+| `painel.html` | Painel rápido de widgets (Tarefas, Hoje, Claude, Música, Jarvis, Atalhos, Sistema); servido em `/painel` |
 | `overlay.html` + `overlay/` | Esfera flutuante (página transparente + casca Tauri sem foco e com cliques atravessando) |
 | `voz_lab.py` + `voz_lab.html` | Laboratório para ouvir e escolher a voz (porta 8766, só quando iniciado) |
 | `config.example.json` | Todas as opções, com padrões seguros |
@@ -36,7 +38,7 @@ O app Tauri tem **duas janelas**: a esfera (transparente, sem foco, cliques atra
 
 **Mover e redimensionar.** A janela é nativa, sem moldura e redimensionável (mínimo 420×380). A página pede ao sistema o arrasto (`start_dragging`, na barra de cima) e o redimensionamento (`start_resize_dragging`, nas oito alças invisíveis das bordas) — a mesma fluidez de uma janela comum. Só a janela `painel`, e só páginas de `127.0.0.1:8765`, têm essas duas permissões (`overlay/src-tauri/capabilities/painel.json`). O app Rust anota os eventos de mover/redimensionar e, 0,5 s depois que você para, envia `{x, y, w, h}` (pixels físicos) a `POST /api/painel/geometria`; o Jarvis valida (inteiros, limites) e guarda em `.estado/painel_geometria.json`. Ao reabrir, `GET /api/painel` devolve `geom`; o app só a usa se o meio da barra de cima ainda cair numa tela (monitor trocado ou desligado → canto padrão). `POST /api/painel/resetar` apaga a posição e incrementa o contador `reset`, que o app percebe para restaurar na hora. O layout é flex/grid fluido: duas colunas, ou uma com rolagem abaixo de ~640 px.
 
-Rotas locais usadas pelo painel: `/api/tarefas` (+ `/adicionar`, `/concluir`, `/remover`, `/desfazer`), `/api/sistema` (CPU, memória, tempo ligado, via API do Windows), `/api/musica` (+ `/capa`, `/acao`), `/api/atalhos`, `/api/acao`, `/api/painel` (+ `/alternar`, `/fechar`, `/geometria`, `/resetar`).
+Rotas locais usadas pelo painel: `/api/tarefas` (+ `/adicionar`, `/concluir`, `/remover`, `/desfazer`), `/api/sistema` (CPU, memória, tempo ligado, via API do Windows), `/api/uso` (consumo do plano do Claude: só percentuais e horários de reinício), `/api/clima` (temperatura e condição, cache de 1 h), `/api/musica` (+ `/capa`, `/acao`), `/api/atalhos`, `/api/acao`, `/api/painel` (+ `/alternar`, `/fechar`, `/geometria`, `/resetar`).
 
 ## Estados e sinais
 `idle → listening → transcribing → thinking → speaking → idle`. O serviço publica em `/api/status`: estado, **nível de áudio** (microfone ao ouvir; envelope da voz ao falar), ferramentas em uso (do stream do Claude) e se aguarda confirmação.

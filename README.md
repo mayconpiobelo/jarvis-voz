@@ -8,7 +8,7 @@ Ctrl+Alt+J → microfone → Whisper (local) → Claude Code (suas ferramentas) 
 
 - **Esfera flutuante** (overlay): aparece sozinha no canto da tela enquanto ele ouve, pensa e fala; não rouba o foco e os cliques passam por ela.
 - **Janela completa**: esfera, etapas (Microfone → Whisper → Claude → Voz), ferramentas em uso, legendas, histórico e **tarefas**.
-- **Painel rápido** (`Ctrl+Alt+T`): painel flutuante de widgets, com **Tarefas** (campo “Nova tarefa”, concluir com um clique), **Hoje** (com CPU e memória), **Música** (Spotify: capa, progresso e controles), **Jarvis** e **Atalhos** (apps e links seus).
+- **Painel rápido** (`Ctrl+Alt+T`): painel flutuante de widgets, com **Tarefas** (campo “Nova tarefa”, concluir com um clique), **Hoje** (com a temperatura e o tempo da sua cidade, CPU e memória), **Claude** (quanto você já usou da sessão de 5 h e da semana, e quando cada uma reinicia, como na tela de uso do claude.ai), **Música** (Spotify: capa, progresso e controles), **Jarvis** e **Atalhos** (apps e links seus).
 - **Trava de segurança**: o que envia, publica ou mexe fora da sua pasta só acontece depois de você dizer **“confirma”**; apagar e comandos destrutivos ficam bloqueados.
 - **Lista de tarefas por voz**: *“Jarvis, insira: atualizar workload geral na lista de tarefas.”*
 
@@ -60,6 +60,8 @@ O `iniciar-jarvis.cmd` abre também um vigia que reabre o Jarvis em até ~10 s s
 
 ## Configuração
 **Microfone e caixas de som**: `mic_device` e `speaker_device`. O modo `"auto"` (padrão; também `null`) **acompanha o áudio do sistema**: com um headset conectado e selecionado no Windows, o Jarvis usa o microfone e o fone dele; sem ele, usa o microfone e as caixas do notebook. Ele pula dispositivos virtuais (como o Steam Streaming) e caixas de monitor (HDMI) quando são o padrão, e relê os dispositivos a cada uso, então trocar de fone vale na hora. `"notebook"` usa sempre o som interno do notebook; um trecho do nome (ex.: `"HyperX"`) escolhe um dispositivo específico. Se o escolhido sumir (fone desligado), o Jarvis usa o do notebook sozinho. Para ver os nomes: `.venv\Scripts\python.exe -c "import sounddevice as sd; print(sd.query_devices())"`. A escolha aparece no `jarvis.log`.
+
+**Clima**: `painel.clima` guarda `cidade` (só o nome mostrado), `lat` e `lon` (use as coordenadas da cidade; o exemplo é São Paulo). O Jarvis consulta o Open-Meteo no máximo 1 vez por hora e só envia essas coordenadas arredondadas. `enabled: false` desliga.
 
 A música usa `painel.musica` (`enabled` e `app`, o player preferido; padrão `Spotify`). O painel e os seus atalhos (apps, pastas e links) ficam em `painel` no `config.json`: `hotkey`, `corner` (`tr`, `tl`, `br`, `bl`, `c`) e `atalhos` (`{id, nome, tipo: app|url, alvo}`; o botão “Adicionar” do painel abre o arquivo). O navegador nunca recebe o `alvo`, só o `id`.
 

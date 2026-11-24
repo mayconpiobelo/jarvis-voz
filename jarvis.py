@@ -1150,6 +1150,14 @@ def musica_ligada() -> bool:
     return bool(musica_cfg().get("enabled", True))
 
 
+def uso_claude_ligado() -> bool:
+    return bool(painel_cfg().get("uso_claude", {}).get("enabled", True))
+
+
+def clima_cfg() -> dict:
+    return painel_cfg().get("clima", {})
+
+
 def responder_musica(texto: str) -> str | None:
     """Comando de musica por voz tratado na hora ("pausa a musica", "proxima musica", "o que esta tocando")."""
     if not musica_ligada():
@@ -1385,6 +1393,23 @@ def start_history_server() -> None:
                 return self._send(200, capa[0], capa[1])
             if path == "/api/sistema":
                 return self._send(200, json.dumps(sistema_info()).encode(), "application/json")
+            if path == "/api/clima":  # temperatura e condicao da cidade do config (consulta no maximo 1x por hora)
+                cfg = clima_cfg()
+                if not cfg.get("enabled", True):
+                    dados = {"ok": False, "desligado": True, "motivo": "Desligado no config."}
+                else:
+                    import clima
+
+                    dados = clima.obter(cfg)
+                return self._send(200, json.dumps(dados, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
+            if path == "/api/uso":  # consumo do plano do Claude Code (so numeros; o login nunca sai do servico)
+                if not uso_claude_ligado():
+                    dados = {"ok": False, "desligado": True, "motivo": "Desligado no config."}
+                else:
+                    import uso_claude
+
+                    dados = uso_claude.obter()
+                return self._send(200, json.dumps(dados, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
             if path == "/api/atalhos":
                 return self._send(200, json.dumps(atalhos_painel(), ensure_ascii=False).encode("utf-8"),
                                   "application/json; charset=utf-8")

@@ -121,6 +121,15 @@
     "musica": {
       "enabled": true,
       "app": "Spotify"
+    },
+    "uso_claude": {
+      "enabled": true
+    },
+    "clima": {
+      "enabled": true,
+      "cidade": "São Paulo",
+      "lat": -23.55,
+      "lon": -46.63
     }
   }
 }

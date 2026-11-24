@@ -293,6 +293,43 @@ def test_sistema_devolve_percentuais(srv):
     assert 0 <= s["cpu"] <= 100 and 0 <= s["mem"] <= 100 and s["uptime_s"] > 0
 
 
+def test_rota_de_clima_usa_a_cidade_do_config(srv, monkeypatch):
+    import clima
+
+    visto = []
+
+    def http(lat, lon):
+        visto.append((lat, lon))
+        return {"current": {"temperature_2m": 23.6, "weather_code": 61, "is_day": 1}}
+
+    monkeypatch.setattr(clima, "_clima", clima.Clima(http=http))
+    monkeypatch.setitem(jarvis.CFG["painel"], "clima", {"enabled": True, "cidade": "Jundiaí", "lat": -23.19, "lon": -46.9})
+    st, d = chamar(srv, "GET", "/api/clima")
+    assert st == 200 and d["ok"] and (d["temp"], d["condicao"], d["icone"], d["cidade"]) == (24, "Chuva fraca", "chuva", "Jundiaí")
+    chamar(srv, "GET", "/api/clima")
+    assert visto == [(-23.19, -46.9)]                                              # a segunda leitura veio do cache
+    assert chamar(srv, "GET", "/api/clima", host="evil.example")[0] == 403
+    monkeypatch.setitem(jarvis.CFG["painel"], "clima", {"enabled": False})
+    assert chamar(srv, "GET", "/api/clima")[1]["desligado"] is True
+    monkeypatch.setitem(jarvis.CFG["painel"], "clima", {"cidade": "Sem coordenadas"})
+    assert chamar(srv, "GET", "/api/clima")[1]["desligado"] is True
+
+
+def test_rota_de_uso_do_claude_so_devolve_numeros(srv, monkeypatch):
+    import uso_claude
+
+    resposta = {"limits": [{"kind": "session", "percent": 12, "resets_at": "2026-11-24T15:50:00+00:00"},
+                           {"kind": "weekly_all", "percent": 48, "resets_at": "2026-11-25T23:00:00+00:00"}],
+                "access_token": "NAO-PODE-VAZAR"}
+    monkeypatch.setattr(uso_claude, "_consumo", uso_claude.Consumo(credencial=lambda: ("TOKEN-SECRETO", "Pro"), http=lambda t: resposta))
+    st, d = chamar(srv, "GET", "/api/uso")
+    assert st == 200 and d["ok"] and d["plano"] == "Pro" and [x["pct"] for x in d["limites"]] == [12, 48]
+    assert "TOKEN-SECRETO" not in json.dumps(d) and "NAO-PODE-VAZAR" not in json.dumps(d)
+    assert chamar(srv, "GET", "/api/uso", host="evil.example")[0] == 403          # so o proprio PC
+    monkeypatch.setitem(jarvis.CFG["painel"], "uso_claude", {"enabled": False})
+    assert chamar(srv, "GET", "/api/uso")[1]["desligado"] is True                 # desligavel no config
+
+
 def test_rotas_de_musica_com_player_falso(srv):
     import musica
 
