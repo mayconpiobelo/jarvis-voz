@@ -62,6 +62,39 @@ def test_snapshot_completo_e_capa_so_uma_vez(fake):
     assert mime == "image/png" and dados[:4] == b"\x89PNG"
 
 
+def test_capa_que_falhou_tenta_de_novo(fake, monkeypatch):
+    # Bug real: a capa falhou uma vez (Windows ainda sem a imagem / prazo estourado) e a faixa ficou "sem capa" para sempre.
+    monkeypatch.setattr(musica, "CAPA_INTERVALO", 0.0)
+    falhas = {"n": 2}
+    boa = fake.capa
+
+    def capa_falha(preferir):
+        if falhas["n"]:
+            falhas["n"] -= 1
+            raise RuntimeError("sem imagem ainda")
+        return boa(preferir)
+
+    fake.capa = capa_falha
+    assert musica.snapshot(validade=0)["capa"] is False
+    assert musica.snapshot(validade=0)["capa"] is False
+    s = musica.snapshot(validade=0)
+    assert s["capa"] is True and s["cor"] != "#1db954" and musica.capa_bytes() is not None
+
+
+def test_capa_nao_insiste_para_sempre(fake, monkeypatch):
+    monkeypatch.setattr(musica, "CAPA_INTERVALO", 0.0)
+    n = {"c": 0}
+
+    def sempre_falha(preferir):
+        n["c"] += 1
+        raise RuntimeError("x")
+
+    fake.capa = sempre_falha
+    for _ in range(20):
+        assert musica.snapshot(validade=0)["capa"] is False
+    assert n["c"] == musica.CAPA_TENTATIVAS
+
+
 def test_sem_sessao_ou_sem_faixa(fake):
     fake.sessao = False
     assert musica.snapshot(validade=0)["ativo"] is False

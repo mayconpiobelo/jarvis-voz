@@ -116,13 +116,15 @@ class WinrtBackend:
 _lock = threading.Lock()
 _backend: Backend | None = None
 _indisponivel: str | None = None
-_cache: dict[str, Any] = {"t": 0.0, "snap": None, "capa_chave": None, "capa": None, "cor": "#1db954"}
+_cache: dict[str, Any] = {"t": 0.0, "snap": None, "capa_chave": None, "capa": None, "cor": "#1db954", "capa_tent": 0, "capa_prox": 0.0}
 
 # O controle de midia do Windows (SMTC) as vezes TRAVA (servico parado, PC sem memoria). Sem limite de tempo, cada consulta do
 # painel ficava pendurada segurando uma conexao; com 6 penduradas o navegador do painel para de falar com o Jarvis (estado
 # "desligado", tarefas que nao entram). Por isso toda chamada ao Windows tem prazo e, se estourar, o modulo descansa um tempo.
 LIMITE = 3.0              # segundos esperando o Windows
 PAUSA = 20.0              # depois de um travamento, nao insiste por este tempo
+CAPA_TENTATIVAS = 6       # quantas vezes tenta baixar a capa de uma mesma faixa
+CAPA_INTERVALO = 4.0      # segundos entre uma tentativa e outra
 MOTIVO_TRAVADO = "o controle de mídia do Windows não respondeu"
 _travado_ate = 0.0
 
@@ -161,7 +163,7 @@ def definir_backend(b: Backend | None) -> None:
     """Para testes: injeta um backend falso (e limpa o cache)."""
     global _backend, _indisponivel, _travado_ate
     _backend, _indisponivel, _travado_ate = b, None, 0.0
-    _cache.update(t=0.0, snap=None, capa_chave=None, capa=None)
+    _cache.update(t=0.0, snap=None, capa_chave=None, capa=None, capa_tent=0, capa_prox=0.0)
 
 
 def cor_dominante(img_bytes: bytes) -> str:
@@ -206,13 +208,18 @@ def snapshot(preferir: str = "Spotify", validade: float = 0.8) -> dict:
         else:
             chave = f"{s['app']}|{s['titulo']}|{s['artista']}|{s['album']}"
             if chave != _cache["capa_chave"]:
-                dados = None
-                if s.get("tem_capa"):
-                    try:
-                        dados = _com_limite(b.capa, preferir)
-                    except Exception:   # inclui o prazo estourado: segue sem capa
-                        dados = None
-                _cache.update(capa_chave=chave, capa=dados, cor=cor_dominante(dados) if dados else "#1db954")
+                _cache.update(capa_chave=chave, capa=None, cor="#1db954", capa_tent=0, capa_prox=0.0)
+            # A capa falha de vez em quando (Windows ainda sem a imagem logo apos trocar de faixa, prazo estourado). Antes a
+            # faixa ficava marcada como "sem capa" para sempre; agora tenta de novo a cada poucos segundos, algumas vezes.
+            if not _cache["capa"] and s.get("tem_capa") and _cache["capa_tent"] < CAPA_TENTATIVAS and agora >= _cache["capa_prox"]:
+                try:
+                    dados = _com_limite(b.capa, preferir)
+                except Exception:   # inclui o prazo estourado: segue sem capa e tenta de novo depois
+                    dados = None
+                _cache["capa_tent"] += 1
+                _cache["capa_prox"] = time.monotonic() + CAPA_INTERVALO
+                if dados:
+                    _cache.update(capa=dados, cor=cor_dominante(dados))
             res = {"disponivel": True, "ativo": True, **{k: s[k] for k in ("app", "titulo", "artista", "album", "estado",
                                                                               "posicao_s", "duracao_s", "pode")},
                    "capa": bool(_cache["capa"]), "capa_id": str(abs(hash(chave)) % 10**9), "cor": _cache["cor"]}
