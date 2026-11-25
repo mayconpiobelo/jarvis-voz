@@ -39,7 +39,7 @@ Com `"tts_engine": "fish"` o Jarvis fala pela API do [Fish Audio](https://fish.a
 | `fish_voice_id` | ID de 32 caracteres da voz ou a URL da página dela (`fish.audio/m/<id>`). Vazio = voz padrão do Fish |
 | `fish_model` | `s2-pro` (padrão). O `s1` sai de operação em 31/12/2026 |
 | `fish_model_gratis` | Modelo sem custo usado quando o pago falha ou o saldo acaba (`s2.1-pro-free`); vazio desliga |
-| `fish_speed` / `fish_speed_gratis` | Velocidade da fala de cada modelo (0,5–2,0; 1 = normal). O gratuito fala ~4% mais rápido que o pago; `0.97` iguala o ritmo (medido: 19,0 contra 19,2 letras/s) |
+| `fish_speed` / `fish_speed_gratis` | Velocidade da fala de cada modelo (0,5–2,0; 1 = normal). O gratuito fala ~4% mais rápido que o pago (medido: 20,0 contra 19,2 letras/s); `0.97` iguala o ritmo (19,0) e o padrão `0.94` o deixa um pouco mais calmo (18,6) |
 
 **Voz sugerida:** o `config.example.json` já traz `fish_voice_id` com a voz pública “Jarvis” (`5566fffe8b8046bc85e576aa9813b9bd`), em português, de timbre masculino maduro e tom formal de mordomo — é a voz que o autor usa. **Ela foi criada por outro usuário do Fish Audio, sem licença declarada, e não sabemos de quem é a gravação original:** confira a página dela no Fish antes de usar, não a use comercialmente e troque por uma voz sua ou licenciada se preferir. O autor dela pode apagá-la ou torná-la privada a qualquer momento (o Jarvis então fala com a voz reserva).
 
