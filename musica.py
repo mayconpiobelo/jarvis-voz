@@ -122,15 +122,34 @@ _cache: dict[str, Any] = {"t": 0.0, "snap": None, "capa_chave": None, "capa": No
 # painel ficava pendurada segurando uma conexao; com 6 penduradas o navegador do painel para de falar com o Jarvis (estado
 # "desligado", tarefas que nao entram). Por isso toda chamada ao Windows tem prazo e, se estourar, o modulo descansa um tempo.
 LIMITE = 3.0              # segundos esperando o Windows
-PAUSA = 20.0              # depois de um travamento, nao insiste por este tempo
+PAUSA = 20.0              # depois de um travamento, nao insiste por este tempo (dobra a cada falha seguida)
+PAUSA_MAX = 300.0         # ...ate no maximo 5 min
 CAPA_TENTATIVAS = 6       # quantas vezes tenta baixar a capa de uma mesma faixa
 CAPA_INTERVALO = 4.0      # segundos entre uma tentativa e outra
 MOTIVO_TRAVADO = "o controle de mídia do Windows não respondeu"
 _travado_ate = 0.0
+_falhas = 0               # travamentos seguidos (zera quando o Windows responde)
+_presa: threading.Thread | None = None   # a unica consulta que ficou pendurada no Windows (nunca abrimos outra por cima)
+
+
+def _travou() -> None:
+    """Registra um travamento e define quanto tempo o modulo descansa (cresce a cada falha seguida)."""
+    global _travado_ate, _falhas
+    _falhas += 1
+    _travado_ate = time.monotonic() + min(PAUSA * 2 ** (_falhas - 1), PAUSA_MAX)
 
 
 def _com_limite(fn, *args):
-    """Roda `fn` numa thread de lado; se o Windows nao responder em LIMITE s, desiste (a thread presa fica para tras)."""
+    """Roda `fn` numa thread de lado; se o Windows nao responder em LIMITE s, desiste.
+
+    A thread presa fica para tras, mas e UMA so: enquanto ela nao voltar, nenhuma outra e aberta (antes cada estouro de prazo
+    deixava uma thread nova presa, e o Jarvis chegou a ~13 mil, tambem sobrecarregando o servico de midia do Windows)."""
+    global _presa, _falhas
+    if _presa is not None:
+        _presa.join(LIMITE)
+        if _presa.is_alive():
+            raise TimeoutError(MOTIVO_TRAVADO)
+        _presa = None
     saida: dict[str, Any] = {}
 
     def alvo() -> None:
@@ -143,7 +162,9 @@ def _com_limite(fn, *args):
     t.start()
     t.join(LIMITE)
     if t.is_alive():
+        _presa = t
         raise TimeoutError(MOTIVO_TRAVADO)
+    _falhas = 0
     if "e" in saida:
         raise saida["e"]
     return saida.get("r")
@@ -161,8 +182,8 @@ def _obter_backend() -> Backend | None:
 
 def definir_backend(b: Backend | None) -> None:
     """Para testes: injeta um backend falso (e limpa o cache)."""
-    global _backend, _indisponivel, _travado_ate
-    _backend, _indisponivel, _travado_ate = b, None, 0.0
+    global _backend, _indisponivel, _travado_ate, _falhas, _presa
+    _backend, _indisponivel, _travado_ate, _falhas, _presa = b, None, 0.0, 0, None
     _cache.update(t=0.0, snap=None, capa_chave=None, capa=None, capa_tent=0, capa_prox=0.0)
 
 
@@ -189,7 +210,6 @@ def snapshot(preferir: str = "Spotify", validade: float = 0.8) -> dict:
     b = _obter_backend()
     if b is None:
         return {"disponivel": False, "ativo": False, "motivo": _indisponivel or "sem backend"}
-    global _travado_ate
     with _lock:
         agora = time.monotonic()
         if agora < _travado_ate:  # o Windows travou ha pouco: responde na hora, sem pendurar quem pergunta
@@ -199,7 +219,7 @@ def snapshot(preferir: str = "Spotify", validade: float = 0.8) -> dict:
         try:
             s = _com_limite(b.snapshot, preferir)
         except TimeoutError:
-            _travado_ate = time.monotonic() + PAUSA
+            _travou()
             return {"disponivel": False, "ativo": False, "motivo": MOTIVO_TRAVADO}
         except Exception as e:
             return {"disponivel": True, "ativo": False, "motivo": f"erro: {type(e).__name__}"}
@@ -214,7 +234,10 @@ def snapshot(preferir: str = "Spotify", validade: float = 0.8) -> dict:
             if not _cache["capa"] and s.get("tem_capa") and _cache["capa_tent"] < CAPA_TENTATIVAS and agora >= _cache["capa_prox"]:
                 try:
                     dados = _com_limite(b.capa, preferir)
-                except Exception:   # inclui o prazo estourado: segue sem capa e tenta de novo depois
+                except TimeoutError:   # o Windows travou: segue sem capa e descansa
+                    dados = None
+                    _travou()
+                except Exception:      # falha comum: segue sem capa e tenta de novo depois
                     dados = None
                 _cache["capa_tent"] += 1
                 _cache["capa_prox"] = time.monotonic() + CAPA_INTERVALO
@@ -242,13 +265,12 @@ def acao(nome: str, preferir: str = "Spotify") -> dict:
     b = _obter_backend()
     if b is None:
         return {"ok": False, "erro": "midia indisponivel"}
-    global _travado_ate
     if time.monotonic() < _travado_ate:
         return {"ok": False, "erro": MOTIVO_TRAVADO}
     try:
         ok = bool(_com_limite(b.acao, nome, preferir))
     except TimeoutError:
-        _travado_ate = time.monotonic() + PAUSA
+        _travou()
         return {"ok": False, "erro": MOTIVO_TRAVADO}
     except Exception as e:
         return {"ok": False, "erro": type(e).__name__}

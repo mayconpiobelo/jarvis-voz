@@ -160,6 +160,42 @@ def test_windows_travado_nao_pendura_o_painel(monkeypatch):
         musica.definir_backend(None)
 
 
+def test_windows_travado_nao_acumula_threads(monkeypatch):
+    # Bug real: cada estouro de prazo deixava uma thread nova presa; o Jarvis chegou a ~13 mil threads e o servico de midia do
+    # Windows (NPSMSvc) foi para 100% de CPU. Agora so existe UMA consulta presa por vez, por mais que o painel insista.
+    monkeypatch.setattr(musica, "LIMITE", 0.05)
+    monkeypatch.setattr(musica, "PAUSA", 0.01)
+    monkeypatch.setattr(musica, "PAUSA_MAX", 0.01)
+    t = Travado()
+    musica.definir_backend(t)
+    try:
+        for _ in range(30):
+            assert musica.snapshot(validade=0)["disponivel"] is False
+            musica.acao("proxima")
+            time.sleep(0.02)
+        presas = [th for th in threading.enumerate() if th.name == "musica-smtc" and th.is_alive()]
+        assert len(presas) == 1 and t.chamadas == 1
+    finally:
+        t.solta.set()
+        musica.definir_backend(None)
+
+
+def test_descanso_cresce_a_cada_falha_e_zera_quando_o_windows_volta(monkeypatch):
+    monkeypatch.setattr(musica, "PAUSA", 1.0)
+    monkeypatch.setattr(musica, "PAUSA_MAX", 4.0)
+    musica.definir_backend(Falso())
+    esperas = []
+    for _ in range(5):
+        musica._travou()
+        esperas.append(round(musica._travado_ate - time.monotonic()))
+    assert esperas == [1, 2, 4, 4, 4]                                    # dobra e para no teto
+    musica._travado_ate = 0.0
+    assert musica.snapshot(validade=0)["ativo"] is True                  # respondeu: a contagem recomeca
+    musica._travou()
+    assert round(musica._travado_ate - time.monotonic()) == 1
+    musica.definir_backend(None)
+
+
 def test_consultas_simultaneas_com_windows_travado_voltam_todas_no_prazo(monkeypatch):
     monkeypatch.setattr(musica, "LIMITE", 0.2)
     t = Travado()
