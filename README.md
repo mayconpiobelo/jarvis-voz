@@ -1,6 +1,6 @@
 # Jarvis de voz
 
-Assistente de voz para **Windows**, no estilo do Jarvis do Homem de Ferro: você aperta um atalho, fala, e ele **age** usando o seu Claude Code (e-mail, agenda, arquivos, web…) e responde em voz alta. Voz e reconhecimento de fala rodam **localmente**.
+Assistente de voz para **Windows**, no estilo do Jarvis do Homem de Ferro: você aperta um atalho, fala, e ele **age** usando o seu Claude Code (e-mail, agenda, arquivos, web…) e responde em voz alta. Voz e reconhecimento de fala rodam **localmente** (há uma voz opcional da Microsoft, em nuvem, que envia o texto falado para fora — veja [docs/VOZ.md](docs/VOZ.md)).
 
 ```
 Ctrl+Alt+J → microfone → Whisper (local) → Claude Code (suas ferramentas) → Kokoro (local) → esfera

@@ -8,6 +8,8 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import asyncio
+import io
 import json
 import logging
 import queue
@@ -18,6 +20,8 @@ import tempfile
 import threading
 import time
 import unicodedata
+import urllib.error
+import urllib.request
 import uuid
 import winsound
 from pathlib import Path
@@ -311,9 +315,37 @@ def kokoro_style(k, spec: str):
     return style
 
 
+def compactar_pausas(audio: np.ndarray, sr: int, max_ms: float) -> np.ndarray:
+    """Encurta silencios (inclusive o do comeco e do fim) para no maximo `max_ms`.
+    Serve para aproximar o ritmo das vozes reserva ao da voz principal (que faz pausas curtas)."""
+    if max_ms <= 0 or len(audio) == 0:
+        return audio
+    n = max(1, int(sr * 0.01))
+    frames = len(audio) // n
+    if frames == 0:
+        return audio
+    rms = np.sqrt(np.mean(audio[: frames * n].astype(np.float32).reshape(frames, n) ** 2, axis=1))
+    silencio = rms < 0.02 * (float(np.max(rms)) or 1.0)
+    cap = max(1, int(max_ms / 10))
+    manter = np.ones(frames, dtype=bool)
+    i = 0
+    while i < frames:
+        if not silencio[i]:
+            i += 1
+            continue
+        j = i
+        while j < frames and silencio[j]:
+            j += 1
+        if j - i > cap:
+            manter[i + cap:j] = False
+        i = j
+    out = audio[: frames * n].reshape(frames, n)[manter].reshape(-1)
+    return np.concatenate([out, audio[frames * n:]]).astype(np.float32)
+
+
 def shape_voice(audio: np.ndarray, sr: int, pitch: float, warmth: float,
-                reverb: float, pause_ms: int) -> np.ndarray:
-    """Tratamento leve: tom mais grave, calor nos graves, ambiencia curta e pausa final."""
+                reverb: float, pause_ms: int, presence: float = 0.0) -> np.ndarray:
+    """Tratamento leve: tom mais grave, calor nos graves, presenca (brilho), ambiencia curta e pausa final."""
     a = audio.astype(np.float32)
     if pitch != 1.0:  # lê com passo < 1 => mais grave (e mais longo; compensado no speed)
         a = np.interp(np.arange(0, len(a), pitch), np.arange(len(a)), a).astype(np.float32)
@@ -321,6 +353,10 @@ def shape_voice(audio: np.ndarray, sr: int, pitch: float, warmth: float,
         w = 10
         lp = np.convolve(a, np.ones(w, dtype=np.float32) / w, mode="same")
         a = a + warmth * lp
+    if presence > 0:  # realca o que esta acima de ~600 Hz (voz menos abafada)
+        w = 16
+        lp = np.convolve(a, np.ones(w, dtype=np.float32) / w, mode="same")
+        a = a + presence * (a - lp)
     if reverb > 0:
         out = a.copy()
         for ms, g in ((23, 0.35), (47, 0.22), (71, 0.13), (113, 0.07), (167, 0.04)):
@@ -383,13 +419,8 @@ def split_sentences(text: str) -> list[str]:
     return [p for p in out if p.strip()]
 
 
-def speak_kokoro(text: str) -> None:
-    """Gera a proxima frase enquanto toca a atual; toque no atalho interrompe."""
-    import queue
-    import time
-
-    import sounddevice as sd
-
+def _kokoro_gerador():
+    """Devolve gerar(frase) -> (audio, sr) com a voz Kokoro do config."""
     k = get_kokoro()
     voice = kokoro_style(k, CFG.get("kokoro_voice", "pm_alex"))
     pitch = float(CFG.get("kokoro_pitch", 1.0))
@@ -397,6 +428,252 @@ def speak_kokoro(text: str) -> None:
     warmth = float(CFG.get("kokoro_warmth", 0.0))
     reverb = float(CFG.get("kokoro_reverb", 0.0))
     pause_ms = int(CFG.get("kokoro_pause_ms", 0))
+    presence = float(CFG.get("kokoro_presence", 0.0))
+    pausa_max = float(CFG.get("reserva_pausa_max_ms", 0))
+
+    def gerar(frase: str):
+        audio, sr = k.create(frase, voice=voice, speed=speed, lang="pt-br")
+        audio = compactar_pausas(audio, sr, pausa_max)
+        return shape_voice(audio, sr, pitch, warmth, reverb, pause_ms, presence), sr
+
+    return gerar
+
+
+def speak_kokoro(text: str) -> None:
+    _falar_frases(text, _kokoro_gerador())
+
+
+# --- voz Edge TTS (Microsoft, em nuvem): opcional; o texto de cada frase sai da maquina
+EDGE_VOZ_PADRAO = "pt-BR-AntonioNeural"
+EDGE_LETRAS_POR_S = 30.0  # abaixo disso o audio veio cortado (a fala real faz ~14 letras/s)
+EDGE_PAUSA = 60.0         # depois de falhar de vez, usa o Kokoro por este tempo (s)
+_edge_pausa_ate = 0.0
+
+
+_EDGE_AJUSTES = {"rate": re.compile(r"^[+-]\d{1,3}%$"), "pitch": re.compile(r"^[+-]\d{1,3}Hz$"),
+                 "volume": re.compile(r"^[+-]\d{1,3}%$")}
+
+
+def edge_ajustes() -> dict:
+    """edge_rate ('+20%'), edge_pitch ('+5Hz') e edge_volume ('+0%') do config; valor invalido e ignorado."""
+    out = {}
+    for k, rx in _EDGE_AJUSTES.items():
+        v = str(CFG.get(f"edge_{k}") or "").strip()
+        if v:
+            if rx.match(v):
+                out[k] = v
+            else:
+                log.warning("edge_%s invalido (%r); ignorando", k, v)
+    return out
+
+
+async def _edge_mp3(frase: str, voz: str, prazo: float, **ajustes) -> bytes:
+    import edge_tts
+
+    buf = bytearray()
+
+    async def ler() -> None:
+        async for c in edge_tts.Communicate(frase, voz, **ajustes).stream():
+            if c["type"] == "audio":
+                buf.extend(c["data"])
+
+    await asyncio.wait_for(ler(), prazo)
+    return bytes(buf)
+
+
+def edge_audio(frase: str, voz: str, tentativas: int = 3, prazo: float = 8.0, ajustes: dict | None = None):
+    """(audio, sr) da frase pela Microsoft. Repete se o servico falhar ou devolver
+    o audio cortado (acontece sem aviso); levanta RuntimeError se nao conseguir."""
+    import soundfile as sf
+
+    ajustes = ajustes or {}
+    ultimo: Exception | None = None
+    for i in range(tentativas):
+        if _stop.is_set():
+            break
+        try:
+            audio, sr = sf.read(io.BytesIO(asyncio.run(_edge_mp3(frase, voz, prazo, **ajustes))), dtype="float32")
+        except Exception as e:  # sem rede, NoAudioReceived, prazo, MP3 invalido
+            ultimo = e
+            time.sleep(0.3 * (i + 1))
+            continue
+        if audio.ndim > 1:
+            audio = audio.mean(axis=1)
+        if len(audio) / sr < len(frase) / EDGE_LETRAS_POR_S:
+            ultimo = RuntimeError("audio cortado")
+            continue
+        return audio, sr
+    raise RuntimeError(f"Edge TTS nao respondeu: {ultimo!r}")
+
+
+def _gerador_edge_com_reserva():
+    """gerar(frase): Edge TTS; se falhar, Kokoro (carregado so quando preciso)."""
+    voz = CFG.get("edge_voice", EDGE_VOZ_PADRAO)
+    ajustes = edge_ajustes()
+    pausa_max = float(CFG.get("reserva_pausa_max_ms", 0))
+    reserva = []
+
+    def gerar(frase: str):
+        global _edge_pausa_ate
+        if time.monotonic() >= _edge_pausa_ate:
+            try:
+                audio, sr = edge_audio(frase, voz, ajustes=ajustes)
+                return compactar_pausas(audio, sr, pausa_max), sr
+            except Exception:
+                log.warning("Edge TTS falhou; usando o Kokoro por %.0f s", EDGE_PAUSA, exc_info=True)
+                _edge_pausa_ate = time.monotonic() + EDGE_PAUSA
+        if not reserva:
+            reserva.append(_kokoro_gerador())
+        return reserva[0](frase)
+
+    return gerar
+
+
+def speak_edge(text: str) -> None:
+    _falar_frases(text, _gerador_edge_com_reserva())
+
+
+# --- voz Fish Audio (nuvem, PAGA, chave propria): opcional; o texto de cada frase sai da maquina
+FISH_URL = "https://api.fish.audio/v1/tts"
+FISH_MODELO_PADRAO = "s2-pro"
+FISH_MODELO_GRATIS = "s2.1-pro-free"
+_fish_gratis_pausa_ate = 0.0
+FISH_PAUSA = 60.0               # depois de uma falha qualquer, usa Edge/Kokoro por este tempo (s)
+FISH_PAUSA_SEM_CREDITO = 3600.0  # sem saldo ou chave recusada: nao insiste por uma hora
+_fish_pausa_ate = 0.0
+
+
+class FishSemCredito(RuntimeError):
+    """Saldo esgotado ou chave recusada: repetir nao adianta."""
+
+    def __init__(self, msg: str, chave_recusada: bool = False):
+        super().__init__(msg)
+        self.chave_recusada = chave_recusada
+
+
+def fish_chave() -> str:
+    """Chave do config.json (fora do git) ou da variavel de ambiente FISH_API_KEY."""
+    return str(CFG.get("fish_api_key") or os.environ.get("FISH_API_KEY") or "").strip()
+
+
+def fish_voice_id(bruto) -> str:
+    """Aceita o ID de 32 caracteres ou a URL da pagina da voz (fish.audio/m/<id>)."""
+    m = re.search(r"[0-9a-fA-F]{32}", str(bruto or ""))
+    return m.group(0).lower() if m else ""
+
+
+def _fish_pedido(frase: str, chave: str, voz_id: str, modelo: str, prazo: float, velocidade: float = 1.0) -> bytes:
+    corpo = {
+        "text": frase, "format": "wav", "sample_rate": 24000, "latency": "balanced",
+        "chunk_length": 200, "normalize": True,
+        # amostragem baixa: a voz nao improvisa em numeros e nomes (pronuncia nao e lugar de criatividade)
+        "temperature": 0.3, "top_p": 0.6, "repetition_penalty": 1.2,
+    }
+    if voz_id:
+        corpo["reference_id"] = voz_id
+    if velocidade != 1.0:
+        corpo["prosody"] = {"speed": velocidade, "volume": 0}
+    req = urllib.request.Request(
+        FISH_URL, data=json.dumps(corpo).encode("utf-8"), method="POST",
+        headers={"Authorization": "Bearer " + chave, "Content-Type": "application/json", "model": modelo},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=prazo) as r:  # noqa: S310 (URL fixa, https)
+            return r.read()
+    except urllib.error.HTTPError as e:  # so o codigo: a resposta nao entra na mensagem
+        txt = e.read(400).decode("utf-8", "replace").lower()
+        if e.code == 402 or (e.code in (400, 403) and any(p in txt for p in ("credit", "balance", "insufficient", "quota"))):
+            raise FishSemCredito("Fish Audio: sem saldo") from None
+        if e.code == 401:
+            raise FishSemCredito("Fish Audio recusou a chave (401)", chave_recusada=True) from None
+        raise RuntimeError(f"Fish Audio respondeu {e.code}") from None
+
+
+def fish_velocidade(chave_cfg: str) -> float:
+    """Velocidade da fala do config (0,5 a 2,0); invalida ou ausente = 1,0 (normal)."""
+    try:
+        v = float(CFG.get(chave_cfg) or 1.0)
+    except (TypeError, ValueError):
+        return 1.0
+    return v if 0.5 <= v <= 2.0 else 1.0
+
+
+def fish_audio(frase: str, chave: str, voz_id: str, modelo: str, tentativas: int = 2, prazo: float = 15.0,
+               velocidade: float = 1.0):
+    """(audio, sr) da frase pelo Fish Audio; levanta FishSemCredito ou RuntimeError."""
+    import soundfile as sf
+
+    ultimo: Exception | None = None
+    for i in range(tentativas):
+        if _stop.is_set():
+            break
+        try:
+            dados = _fish_pedido(frase, chave, voz_id, modelo, prazo, velocidade)
+            audio, sr = sf.read(io.BytesIO(dados), dtype="float32")
+        except FishSemCredito:
+            raise
+        except Exception as e:  # sem rede, 429, prazo, audio invalido
+            ultimo = e
+            time.sleep(0.5 * (i + 1))
+            continue
+        if audio.ndim > 1:
+            audio = audio.mean(axis=1)
+        if len(audio):
+            return audio, sr
+        ultimo = RuntimeError("audio vazio")
+    raise RuntimeError(f"Fish Audio nao respondeu: {ultimo!r}")
+
+
+def speak_fish(text: str) -> None:
+    chave = fish_chave()
+    voz_id = fish_voice_id(CFG.get("fish_voice_id"))
+    modelo = str(CFG.get("fish_model") or FISH_MODELO_PADRAO)
+    if not chave:
+        log.warning("tts_engine 'fish' sem fish_api_key (ou FISH_API_KEY); usando a voz Edge")
+    elif CFG.get("fish_voice_id") and not voz_id:
+        log.warning("fish_voice_id invalido (esperado 32 caracteres ou a URL fish.audio/m/<id>); usando a voz padrao do Fish")
+    # Modelo gratuito do Fish: a MESMA voz, sem custo, so mais lento. Vazio em fish_model_gratis desliga.
+    gratis = str(CFG.get("fish_model_gratis", FISH_MODELO_GRATIS) or "").strip()
+    vel_pago, vel_gratis = fish_velocidade("fish_speed"), fish_velocidade("fish_speed_gratis")
+    reserva = _gerador_edge_com_reserva()
+
+    def gerar(frase: str):
+        global _fish_pausa_ate, _fish_gratis_pausa_ate
+        chave_ok = bool(chave)
+        if chave_ok and time.monotonic() >= _fish_pausa_ate:
+            try:
+                return fish_audio(frase, chave, voz_id, modelo, velocidade=vel_pago)
+            except FishSemCredito as e:
+                log.warning("%s; usando o modelo gratuito/Edge/Kokoro por %.0f min", e, FISH_PAUSA_SEM_CREDITO / 60)
+                _fish_pausa_ate = time.monotonic() + FISH_PAUSA_SEM_CREDITO
+                if e.chave_recusada:  # com a chave recusada o modelo gratuito tambem nao responde
+                    _fish_gratis_pausa_ate = _fish_pausa_ate
+                    chave_ok = False
+            except Exception:
+                log.warning("Fish Audio falhou; tentando o modelo gratuito/Edge/Kokoro por %.0f s", FISH_PAUSA, exc_info=True)
+                _fish_pausa_ate = time.monotonic() + FISH_PAUSA
+        if chave_ok and gratis and gratis != modelo and time.monotonic() >= _fish_gratis_pausa_ate:
+            try:
+                return fish_audio(frase, chave, voz_id, gratis, velocidade=vel_gratis)
+            except FishSemCredito as e:
+                log.warning("%s (modelo gratuito); usando Edge/Kokoro por %.0f min", e, FISH_PAUSA_SEM_CREDITO / 60)
+                _fish_gratis_pausa_ate = time.monotonic() + FISH_PAUSA_SEM_CREDITO
+            except Exception:
+                log.warning("Fish Audio (modelo gratuito) falhou; usando Edge/Kokoro por %.0f s", FISH_PAUSA, exc_info=True)
+                _fish_gratis_pausa_ate = time.monotonic() + FISH_PAUSA
+        return reserva(frase)
+
+    _falar_frases(text, gerar)
+
+
+def _falar_frases(text: str, gerar) -> None:
+    """Gera a proxima frase enquanto toca a atual; toque no atalho interrompe.
+    `gerar(frase)` devolve (audio, sr)."""
+    import queue
+    import time
+
+    import sounddevice as sd
+
     q: queue.Queue = queue.Queue(maxsize=2)
 
     def producer() -> None:
@@ -404,11 +681,9 @@ def speak_kokoro(text: str) -> None:
             for s in split_sentences(text):
                 if _stop.is_set():
                     break
-                audio, sr = k.create(s, voice=voice, speed=speed, lang="pt-br")
-                audio = shape_voice(audio, sr, pitch, warmth, reverb, pause_ms)
-                q.put((audio, sr))
+                q.put(gerar(s))
         except Exception:
-            log.exception("falha ao gerar voz Kokoro")
+            log.exception("falha ao gerar a voz")
         finally:
             q.put(None)
 
@@ -442,12 +717,14 @@ def speak(text: str) -> None:
     text = clean_for_speech(text)
     if not text:
         return
-    if CFG.get("tts_engine", "sapi") == "kokoro":
+    motor = CFG.get("tts_engine", "sapi")
+    falar = {"fish": speak_fish, "edge": speak_edge, "kokoro": speak_kokoro}.get(motor)
+    if falar:
         try:
-            speak_kokoro(text)
+            falar(text)
             return
         except Exception:
-            log.exception("Kokoro falhou; usando voz do Windows")
+            log.exception("%s falhou; usando voz do Windows", motor)
     speak_sapi(text)
 
 
@@ -1864,10 +2141,14 @@ def run_tray() -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--text", help="envia texto direto ao Claude e fala a resposta")
+    ap.add_argument("--dizer", help="so fala este texto com a voz do config (testa voz, chave e conexao; nao usa o Claude)")
     ap.add_argument("--no-speak", action="store_true")
     ap.add_argument("--once", action="store_true", help="uma rodada por voz, sem bandeja")
     args = ap.parse_args()
 
+    if args.dizer:
+        speak(args.dizer)
+        return
     if args.text:
         reply = ask_claude(args.text)
         print(reply)
