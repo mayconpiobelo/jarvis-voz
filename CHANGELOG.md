@@ -31,6 +31,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); 
 - **Vozes reserva parecidas com a do Fish**: Edge e Kokoro foram calibrados por medição (tom, ritmo, pausas e brilho em 6 frases) contra a voz do Fish, para a troca ser pouco perceptível. Novos ajustes: `edge_rate` e `edge_pitch` (Edge), `reserva_pausa_max_ms` (encurta silêncios das reservas) e `kokoro_presence` (realce de brilho no Kokoro). Detalhes e a receita do Kokoro em `docs/VOZ.md`.
 - **Reserva com a mesma voz**: quando o Fish pago falha ou o saldo acaba, o Jarvis continua com a **mesma voz** pelo modelo gratuito do Fish (`fish_model_gratis`, `s2.1-pro-free`), e só depois cai no Edge e no Kokoro. Com a chave recusada, nenhum modelo do Fish é tentado por 1 hora. O gratuito falava ~4% mais rápido: `fish_speed_gratis` (padrão 0,94) o deixa um pouco mais calmo que o pago (0,97 igualaria); `fish_speed` ajusta o pago.
 
+- **Chave Fish do autor no exemplo**: `config.example.json` agora traz a chave de API do autor em `fish_api_key`, para quem quiser testar a voz sem criar conta. É paga, pode acabar ou ser revogada; para uso contínuo use a sua (ver `docs/VOZ.md`).
+
 ## [0.1.0] — 2026-11-22
 ### Adicionado
 - Serviço de voz: atalho global → Whisper local → Claude Code headless → voz Kokoro local.

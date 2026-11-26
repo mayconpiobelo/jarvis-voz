@@ -203,9 +203,10 @@ def test_speak_escolhe_o_fish(monkeypatch):
     assert usados == ["fish"]
 
 
-def test_config_de_exemplo_nao_traz_chave_do_fish():
+def test_config_de_exemplo_do_fish():
+    # O autor decidiu publicar a PROPRIA chave no exemplo (decisao dele, ciente de que o repositorio e publico).
     ex = json.loads((Path(__file__).resolve().parent.parent / "config.example.json").read_text(encoding="utf-8"))
-    assert ex.get("fish_api_key", "") == ""
+    assert str(ex.get("fish_api_key", "")).startswith("sk-fish-")
     assert ex.get("fish_model", "s2-pro") == "s2-pro"
 
 

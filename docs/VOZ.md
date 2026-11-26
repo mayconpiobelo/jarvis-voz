@@ -43,6 +43,8 @@ Com `"tts_engine": "fish"` o Jarvis fala pela API do [Fish Audio](https://fish.a
 
 **Voz sugerida:** o `config.example.json` já traz `fish_voice_id` com a voz pública “Jarvis” (`5566fffe8b8046bc85e576aa9813b9bd`), em português, de timbre masculino maduro e tom formal de mordomo — é a voz que o autor usa. **Ela foi criada por outro usuário do Fish Audio, sem licença declarada, e não sabemos de quem é a gravação original:** confira a página dela no Fish antes de usar, não a use comercialmente e troque por uma voz sua ou licenciada se preferir. O autor dela pode apagá-la ou torná-la privada a qualquer momento (o Jarvis então fala com a voz reserva).
 
+**Atenção sobre a chave do exemplo:** o `config.example.json` traz a chave de API **do autor** em `fish_api_key`, publicada por decisão dele para quem quiser testar a voz. Ela é paga e pode ser esgotada, revogada ou trocada a qualquer momento (o Jarvis então cai no modelo gratuito, no Edge e no Kokoro). **Para uso contínuo, crie a sua própria chave e coloque no seu `config.json`**; não dependa da do autor.
+
 3. Teste sem gastar o Claude: `python jarvis.py --dizer "Perfeitamente, senhor."`
 
 **Privacidade e custo:** cada frase falada **sai da máquina** e é cobrada. **Nunca coloque a chave em arquivo versionado.** Use só voz sua ou licenciada: clonar a voz de uma pessoa real (por exemplo um ator de dublagem) exige a autorização dela.
