@@ -11,6 +11,7 @@ Ctrl+Alt+J → microfone → Whisper (local) → Claude Code (suas ferramentas) 
 - **Painel rápido** (`Ctrl+Alt+T`): painel flutuante de widgets, com **Tarefas** (campo “Nova tarefa”, concluir com um clique), **Hoje** (com a temperatura e o tempo da sua cidade, CPU e memória), **Claude** (quanto você já usou da sessão de 5 h e da semana, e quando cada uma reinicia, como na tela de uso do claude.ai), **Música** (Spotify: capa, progresso e controles), **Jarvis** e **Atalhos** (apps e links seus).
 - **Trava de segurança**: o que envia, publica ou mexe fora da sua pasta só acontece depois de você dizer **“confirma”**; apagar e comandos destrutivos ficam bloqueados.
 - **Lista de tarefas por voz**: *“Jarvis, insira: atualizar workload geral na lista de tarefas.”*
+- **Jarvis no celular** (opcional, desligado por padrão): um app web instalável na tela inicial do iPhone/Android, com esfera, conversa por voz ou texto (na mesma voz do PC) e tarefas. Fala com o seu PC pelo Tailscale e só **consulta**; ações ficam para o computador. Veja [docs/CELULAR.md](docs/CELULAR.md).
 
 > **Aviso:** o Jarvis dá ao Claude acesso amplo ao seu computador. Leia [docs/SEGURANCA.md](docs/SEGURANCA.md) antes de usar.
 
@@ -80,6 +81,7 @@ Mais em [CONTRIBUTING.md](CONTRIBUTING.md) e [docs/ARQUITETURA.md](docs/ARQUITET
 jarvis.py  trava.py  tarefas.py      serviço, trava de segurança, lista de tarefas
 historico.html  overlay.html         janela completa e esfera do overlay
 painel.html                          painel rápido (widgets: tarefas, hoje, Jarvis, atalhos, sistema)
+celular.py  celular.html             app de celular (servidor, API e página instalável)
 voz_lab.py  voz_lab.html             laboratório de voz
 overlay/                             app Tauri (Rust) da esfera flutuante
 config.example.json                  configuração de exemplo (config.json fica fora do git)

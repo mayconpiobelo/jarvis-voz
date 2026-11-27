@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#070b16">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Jarvis">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="icon" href="/icon-192.png">
+<title>Jarvis</title>
+<style>
+:root{
+  --bg:#070b16; --bg2:#0d1530; --card:rgba(255,255,255,.06); --line:rgba(255,255,255,.11);
+  --txt:#e8edf8; --mut:#8e9ab8; --ciano:#3cc8ff; --violeta:#9664ff; --ok:#3ddc84; --aviso:#f5be3c; --erro:#ff5a5a;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{background:radial-gradient(120% 80% at 50% 0%,var(--bg2),var(--bg) 70%) fixed;color:var(--txt);
+  font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;overscroll-behavior:none;
+  display:flex;flex-direction:column;height:100dvh;overflow:hidden}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+button:focus-visible,input:focus-visible{outline:2px solid var(--ciano);outline-offset:2px}
+header{display:flex;align-items:center;gap:10px;padding:calc(var(--safe-t) + 10px) 16px 6px}
+header h1{font-size:18px;font-weight:600;letter-spacing:.04em;margin:0;flex:1}
+.ponto{width:9px;height:9px;border-radius:50%;background:var(--mut);box-shadow:0 0 0 3px rgba(255,255,255,.05)}
+.ponto.on{background:var(--ok)} .ponto.off{background:var(--erro)}
+.ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:var(--mut)}
+.ico:active{background:var(--card)} .ico svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.ico.on{color:var(--ciano)}
+main{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+.vista{position:absolute;inset:0;display:none;flex-direction:column;min-height:0}
+.vista.ativa{display:flex}
+/* conversa */
+.orbe{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;padding:4px 0 2px}
+#orbe{width:176px;height:176px;touch-action:manipulation}
+#estado{color:var(--mut);font-size:13px;height:18px;margin-top:-4px}
+#chat{flex:1;min-height:0;overflow-y:auto;padding:8px 16px;display:flex;flex-direction:column;gap:8px;scroll-behavior:smooth}
+.msg{max-width:86%;padding:9px 13px;border-radius:16px;border:1px solid var(--line);background:var(--card);
+  white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px}
+.msg.eu{align-self:flex-end;background:linear-gradient(135deg,rgba(60,200,255,.20),rgba(150,100,255,.20))}
+.msg.jarvis{align-self:flex-start}
+.msg.erro{align-self:center;color:var(--erro);border-color:rgba(255,90,90,.4);font-size:14px}
+.vazio{margin:auto;color:var(--mut);text-align:center;padding:0 24px;font-size:14px}
+.compor{display:flex;align-items:center;gap:8px;padding:8px 12px 10px}
+#texto{flex:1;min-width:0;height:44px;border-radius:22px;border:1px solid var(--line);background:var(--card);color:var(--txt);
+  padding:0 16px;font-size:16px}
+#texto::placeholder{color:var(--mut)}
+.enviar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:var(--ciano)}
+.enviar svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mic{width:64px;height:64px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;color:#06101c;
+  background:linear-gradient(135deg,var(--ciano),var(--violeta));box-shadow:0 6px 22px rgba(80,150,255,.35)}
+.mic svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mic.gravando{background:var(--erro);color:#fff;box-shadow:0 0 0 8px rgba(255,90,90,.18);animation:pulso 1.2s infinite}
+.mic:disabled{opacity:.45}
+@keyframes pulso{50%{box-shadow:0 0 0 14px rgba(255,90,90,.06)}}
+/* tarefas */
+.cab{padding:6px 16px 4px;color:var(--mut);font-size:13px;letter-spacing:.06em;text-transform:uppercase}
+#lista{flex:1;min-height:0;overflow-y:auto;padding:4px 12px}
+.tarefa{display:flex;align-items:flex-start;gap:12px;padding:12px;margin-bottom:8px;border-radius:14px;border:1px solid var(--line);background:var(--card)}
+.check{flex:0 0 auto;width:26px;height:26px;border-radius:50%;border:2px solid var(--mut);margin-top:1px;display:grid;place-items:center}
+.check:active{border-color:var(--ok)}
+.tarefa .t{flex:1;min-width:0;overflow-wrap:anywhere}
+.badge{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--mut);white-space:nowrap;align-self:center}
+.badge.hoje{color:var(--aviso);border-color:rgba(245,190,60,.5)} .badge.vencida{color:var(--erro);border-color:rgba(255,90,90,.5)}
+.badge.alta{color:var(--erro)}
+.feita{opacity:.5;text-decoration:line-through}
+.feitas-t{margin:10px 4px 4px;color:var(--mut);font-size:13px}
+.nova{padding:8px 12px 10px}
+.nova form{display:flex;gap:8px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;padding:0 0 8px}
+.chip{padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);font-size:14px}
+.chip:active{background:rgba(60,200,255,.2)}
+.aviso{margin:0 12px 8px;padding:8px 12px;border-radius:12px;background:rgba(60,200,255,.12);font-size:14px}
+/* navegacao */
+nav{display:flex;border-top:1px solid var(--line);background:rgba(7,11,22,.85);backdrop-filter:blur(12px);padding-bottom:var(--safe-b)}
+nav button{flex:1;height:52px;color:var(--mut);font-size:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+nav button.ativa{color:var(--ciano)}
+nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+/* token */
+#entrada{position:fixed;inset:0;background:rgba(5,8,16,.94);display:none;place-items:center;padding:24px;z-index:10}
+#entrada.ativa{display:grid}
+#entrada form{width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px}
+#entrada h2{margin:0;font-weight:600} #entrada p{margin:0;color:var(--mut);font-size:14px}
+#entrada input{height:46px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--txt);padding:0 14px;font-size:16px}
+#entrada .ok{height:46px;border-radius:12px;background:linear-gradient(135deg,var(--ciano),var(--violeta));color:#06101c;font-weight:600}
+#erro-token{color:var(--erro);font-size:14px;min-height:20px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<header>
+  <span class="ponto" id="ponto" title="conexão"></span>
+  <h1>Jarvis</h1>
+  <button class="ico on" id="b-voz" aria-label="Voz do Jarvis ligada" title="Voz do Jarvis">
+    <svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+  </button>
+  <button class="ico" id="b-sair" aria-label="Trocar token" title="Trocar token">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+  </button>
+</header>
+
+<main>
+  <section class="vista ativa" id="v-conversa">
+    <div class="orbe"><canvas id="orbe" aria-label="Esfera do Jarvis"></canvas><div id="estado" role="status"></div></div>
+    <div id="chat"><div class="vazio" id="vazio">Toque no microfone e fale, ou digite abaixo.<br>Aqui o Jarvis só consulta; ações ficam para o computador.</div></div>
+    <form class="compor" id="f-texto" autocomplete="off">
+      <input id="texto" type="text" inputmode="text" enterkeyhint="send" placeholder="Digite ao Jarvis" maxlength="500" aria-label="Mensagem">
+      <button class="enviar" type="submit" aria-label="Enviar"><svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button>
+      <button class="mic" type="button" id="mic" aria-label="Falar com o Jarvis">
+        <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+      </button>
+    </form>
+  </section>
+
+  <section class="vista" id="v-tarefas">
+    <div class="cab">Tarefas abertas</div>
+    <div id="lista"></div>
+    <div class="nova">
+      <div class="aviso" id="aviso" hidden></div>
+      <div class="chips" id="chips" hidden></div>
+      <form id="f-tarefa" autocomplete="off">
+        <input id="nova" type="text" enterkeyhint="done" placeholder="Nova tarefa (ex.: revisar contrato sexta)" maxlength="300" aria-label="Nova tarefa" style="flex:1;min-width:0;height:44px;border-radius:22px;border:1px solid var(--line);background:var(--card);color:var(--txt);padding:0 16px;font-size:16px">
+        <button class="enviar" type="submit" aria-label="Adicionar"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+      </form>
+    </div>
+  </section>
+</main>
+
+<nav>
+  <button id="n-conversa" class="ativa"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>Conversa</button>
+  <button id="n-tarefas"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3.5 6 1.2 1.2L7 5M3.5 12l1.2 1.2L7 11M3.5 18l1.2 1.2L7 17"/></svg>Tarefas</button>
+</nav>
+
+<div id="entrada">
+  <form id="f-token">
+    <h2>Jarvis</h2>
+    <p>Cole o token do celular (em <b>config.json</b> &rsaquo; <b>celular</b> &rsaquo; <b>token</b>, no PC).</p>
+    <input id="token" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Token" aria-label="Token">
+    <div id="erro-token" role="alert"></div>
+    <button class="ok" type="submit">Entrar</button>
+  </form>
+</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const guarda = {
+  ler(k){ try { return localStorage.getItem(k); } catch { return null; } },
+  gravar(k, v){ try { localStorage.setItem(k, v); } catch {} },
+  apagar(k){ try { localStorage.removeItem(k); } catch {} },
+};
+let token = guarda.ler("jarvis_token") || "";
+if (location.hash.startsWith("#t=")) {            // link de instalação: o token nunca vai ao servidor (fica no #)
+  token = decodeURIComponent(location.hash.slice(3)).trim();
+  guarda.gravar("jarvis_token", token);
+  history.replaceState(null, "", location.pathname);
+}
+let vozLigada = guarda.ler("jarvis_voz") !== "0";
+let ocupado = false, gravando = false, estado = "idle", nivel = 0;
+
+/* ---------- API ---------- */
+async function api(caminho, { metodo, json, corpo, tipo, audio } = {}) {
+  const cab = { Authorization: "Bearer " + token };
+  if (json !== undefined) { cab["Content-Type"] = "application/json"; corpo = JSON.stringify(json); }
+  else if (tipo) cab["Content-Type"] = tipo;
+  const ctl = new AbortController();
+  const prazo = setTimeout(() => ctl.abort(), 120000);
+  try {
+    const r = await fetch(caminho, { method: metodo || (corpo !== undefined ? "POST" : "GET"), headers: cab, body: corpo, signal: ctl.signal });
+    if (r.status === 401) { pedirToken("Token recusado. Confira e tente de novo."); throw new Error("Acesso negado."); }
+    if (audio && r.ok && (r.headers.get("content-type") || "").startsWith("audio/")) return { blob: await r.blob() };
+    let d = {};
+    try { d = await r.json(); } catch {}
+    if (!r.ok && d.ok !== false) d = { ok: false, texto: "Erro " + r.status };
+    return d;
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error("O Jarvis demorou demais para responder.");
+    throw e;
+  } finally { clearTimeout(prazo); }
+}
+function ponto(sim) { const p = $("#ponto"); p.className = "ponto " + (sim ? "on" : "off"); }
+async function testarConexao() {
+  if (!token) return false;
+  try { const d = await fetch("/api/ping", { headers: { Authorization: "Bearer " + token } }); ponto(d.ok); return d.ok; }
+  catch { ponto(false); return false; }
+}
+
+/* ---------- token ---------- */
+function pedirToken(msg) {
+  $("#erro-token").textContent = msg || "";
+  $("#entrada").classList.add("ativa");
+  setTimeout(() => $("#token").focus(), 50);
+}
+$("#f-token").addEventListener("submit", async e => {
+  e.preventDefault();
+  const t = $("#token").value.trim();
+  if (!t) return;
+  token = t;
+  if (await testarConexao()) { guarda.gravar("jarvis_token", t); $("#token").value = ""; $("#entrada").classList.remove("ativa"); carregarTarefas(); }
+  else { token = guarda.ler("jarvis_token") || ""; $("#erro-token").textContent = "Não consegui entrar. Token errado ou o PC está fora do ar."; }
+});
+$("#b-sair").addEventListener("click", () => { if (confirm("Trocar o token deste aparelho?")) { guarda.apagar("jarvis_token"); token = ""; pedirToken(""); } });
+
+/* ---------- esfera ---------- */
+const COR = { idle: [60, 150, 255], listening: [61, 220, 132], thinking: [245, 190, 60], speaking: [0, 210, 230], error: [255, 90, 90] };
+const NOME = { idle: "", listening: "Ouvindo…", thinking: "Pensando…", speaking: "Falando…", error: "" };
+const cv = $("#orbe"), cx = cv.getContext("2d");
+let corAtual = COR.idle.slice(), fase = 0;
+function ajustarCanvas() { const d = Math.min(devicePixelRatio || 1, 3), l = cv.clientWidth; cv.width = cv.height = Math.round(l * d); }
+function desenhar(t) {
+  fase = t / 1000;
+  const alvo = COR[estado] || COR.idle;
+  for (let i = 0; i < 3; i++) corAtual[i] += (alvo[i] - corAtual[i]) * 0.08;
+  const n = cv.width, c = n / 2;
+  const nv = estado === "speaking" ? 0.35 + 0.35 * Math.abs(Math.sin(fase * 7.3) * Math.sin(fase * 3.1)) : estado === "listening" ? nivel : 0;
+  const resp = estado === "thinking" ? Math.sin(fase * 4) * 0.05 : Math.sin(fase * 1.4) * 0.025;
+  const r = n * (0.22 + resp + nv * 0.12);
+  cx.clearRect(0, 0, n, n);
+  const [R, G, B] = corAtual.map(Math.round);
+  const halo = cx.createRadialGradient(c, c, r * 0.4, c, c, n * 0.5);
+  halo.addColorStop(0, `rgba(${R},${G},${B},.35)`); halo.addColorStop(1, `rgba(${R},${G},${B},0)`);
+  cx.fillStyle = halo; cx.fillRect(0, 0, n, n);
+  const g = cx.createRadialGradient(c - r * 0.3, c - r * 0.35, r * 0.1, c, c, r);
+  g.addColorStop(0, "#ffffff"); g.addColorStop(0.25, `rgb(${R},${G},${B})`); g.addColorStop(1, `rgba(${Math.round(R * .45 + 70)},${Math.round(G * .3 + 40)},${Math.round(B * .5 + 120)},.95)`);
+  cx.beginPath(); cx.arc(c, c, r, 0, 7); cx.fillStyle = g; cx.fill();
+  cx.lineWidth = n * 0.006; cx.strokeStyle = `rgba(${R},${G},${B},.55)`;
+  for (let k = 1; k <= 2; k++) { cx.beginPath(); cx.arc(c, c, r * (1 + k * 0.22 + nv * 0.1 * k) + Math.sin(fase * 2 + k) * n * 0.004, 0, 7); cx.globalAlpha = 0.5 / k; cx.stroke(); }
+  cx.globalAlpha = 1;
+  requestAnimationFrame(desenhar);
+}
+function definirEstado(e, texto) { estado = e; $("#estado").textContent = texto !== undefined ? texto : NOME[e] || ""; }
+addEventListener("resize", ajustarCanvas); ajustarCanvas(); requestAnimationFrame(desenhar);
+
+/* ---------- conversa ---------- */
+function mensagem(classe, texto) {
+  $("#vazio")?.remove();
+  const d = document.createElement("div");
+  d.className = "msg " + classe; d.textContent = texto;
+  const chat = $("#chat"); chat.appendChild(d); chat.scrollTop = chat.scrollHeight;
+  return d;
+}
+async function conversar(texto) {
+  if (ocupado) return;
+  ocupado = true; $("#mic").disabled = true;
+  pararFala();
+  mensagem("eu", texto);
+  definirEstado("thinking");
+  try {
+    const d = await api("/api/perguntar", { json: { texto } });
+    if (!d.ok) throw new Error(d.texto || "Não consegui responder.");
+    mensagem("jarvis", d.texto);
+    if (/tarefa|anotad|concluíd/i.test(d.texto)) carregarTarefas();
+    if (vozLigada) await falar(d.texto); else definirEstado("idle");
+  } catch (e) { mensagem("erro", e.message || "Algo deu errado."); definirEstado("error", ""); setTimeout(() => estado === "error" && definirEstado("idle"), 1500); }
+  finally { ocupado = false; $("#mic").disabled = false; }
+}
+$("#f-texto").addEventListener("submit", e => {
+  e.preventDefault();
+  desbloquearAudio();
+  const t = $("#texto").value.trim();
+  if (!t) return;
+  $("#texto").value = ""; $("#texto").blur();
+  conversar(t);
+});
+
+/* ---------- voz de resposta (a mesma do PC; sem ela, a do aparelho) ---------- */
+const player = new Audio(); player.preload = "auto"; player.playsInline = true;
+const SILENCIO = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=";
+function desbloquearAudio() { try { player.src = SILENCIO; const p = player.play(); p && p.catch(() => {}); } catch {} }
+let urlAtual = "";
+function pararFala() {
+  try { player.pause(); } catch {}
+  try { speechSynthesis.cancel(); } catch {}
+  if (urlAtual) { URL.revokeObjectURL(urlAtual); urlAtual = ""; }
+  if (estado === "speaking") definirEstado("idle");
+}
+function tocar(blob) {
+  return new Promise(ok => {
+    urlAtual = URL.createObjectURL(blob);
+    player.src = urlAtual;
+    const fim = () => { player.onended = player.onerror = null; ok(); };
+    player.onended = fim; player.onerror = fim;
+    player.play().catch(fim);
+  });
+}
+function falarLocal(texto) {
+  return new Promise(ok => {
+    if (!("speechSynthesis" in window)) return ok();
+    const u = new SpeechSynthesisUtterance(texto); u.lang = "pt-BR"; u.onend = u.onerror = () => ok();
+    speechSynthesis.speak(u);
+  });
+}
+async function falar(texto) {
+  definirEstado("speaking");
+  try {
+    const d = await api("/api/falar", { json: { texto }, audio: true });
+    if (d.blob) await tocar(d.blob); else await falarLocal(texto);
+  } catch { await falarLocal(texto); }
+  finally { if (estado === "speaking") definirEstado("idle"); }
+}
+$("#b-voz").addEventListener("click", () => {
+  vozLigada = !vozLigada; guarda.gravar("jarvis_voz", vozLigada ? "1" : "0");
+  $("#b-voz").classList.toggle("on", vozLigada);
+  $("#b-voz").setAttribute("aria-label", "Voz do Jarvis " + (vozLigada ? "ligada" : "desligada"));
+  if (!vozLigada) pararFala();
+});
+$("#b-voz").classList.toggle("on", vozLigada);
+cv.addEventListener("click", () => { if (estado === "speaking") pararFala(); });
+
+/* ---------- microfone ---------- */
+let rec = null, fluxo = null, ctxAudio = null, trechos = [], cancelada = false;
+async function iniciarGravacao() {
+  desbloquearAudio();
+  pararFala();
+  if (!navigator.mediaDevices || !window.MediaRecorder) { mensagem("erro", "Este navegador não grava áudio. Use o campo de texto."); return; }
+  try { fluxo = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+  catch { mensagem("erro", "Sem permissão para o microfone. Libere nos ajustes do navegador."); return; }
+  const tipos = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"];
+  const mime = tipos.find(t => MediaRecorder.isTypeSupported(t)) || "";
+  rec = new MediaRecorder(fluxo, mime ? { mimeType: mime } : undefined);
+  trechos = []; cancelada = false;
+  rec.ondataavailable = e => { if (e.data && e.data.size) trechos.push(e.data); };
+  rec.onstop = () => encerrarGravacao(mime);
+  rec.start();
+  gravando = true; $("#mic").classList.add("gravando"); definirEstado("listening");
+  vigiarSilencio();
+}
+function vigiarSilencio() {                       // fim automático: 1,4 s de silêncio depois de falar (como no PC)
+  ctxAudio = new (window.AudioContext || window.webkitAudioContext)();
+  const an = ctxAudio.createAnalyser(); an.fftSize = 1024;
+  ctxAudio.createMediaStreamSource(fluxo).connect(an);
+  const buf = new Uint8Array(an.fftSize), t0 = performance.now();
+  let ruido = [], limiar = 0.02, falou = false, silencio = 0, ultimo = t0;
+  (function laco() {
+    if (!gravando) return;
+    an.getByteTimeDomainData(buf);
+    let s = 0; for (const v of buf) { const x = (v - 128) / 128; s += x * x; }
+    const rms = Math.sqrt(s / buf.length), agora = performance.now(), dt = agora - ultimo; ultimo = agora;
+    nivel = Math.min(1, Math.pow(rms * 6, 0.6));
+    if (agora - t0 < 400) { ruido.push(rms); if (agora - t0 > 350) limiar = Math.max(0.02, ruido.reduce((a, b) => a + b, 0) / ruido.length * 3); }
+    else if (rms > limiar) { falou = true; silencio = 0; }
+    else if (falou) { silencio += dt; if (silencio > 1400) return pararGravacao(); }
+    else if (agora - t0 > 7000) { cancelada = true; return pararGravacao(); }
+    if (agora - t0 > 60000) return pararGravacao();
+    requestAnimationFrame(laco);
+  })();
+}
+function pararGravacao() {
+  if (!gravando) return;
+  gravando = false; nivel = 0;
+  $("#mic").classList.remove("gravando");
+  try { rec.stop(); } catch { encerrarGravacao(""); }
+}
+async function encerrarGravacao(mime) {
+  fluxo && fluxo.getTracks().forEach(t => t.stop());
+  try { ctxAudio && ctxAudio.close(); } catch {}
+  fluxo = ctxAudio = null;
+  if (cancelada || !trechos.length) { definirEstado("idle"); if (cancelada) mensagem("erro", "Não ouvi nada."); return; }
+  const blob = new Blob(trechos, { type: (rec && rec.mimeType) || mime || "audio/mp4" });
+  trechos = [];
+  ocupado = true; $("#mic").disabled = true; definirEstado("thinking", "Transcrevendo…");
+  let texto = "";
+  try {
+    const d = await api("/api/transcrever", { corpo: blob, tipo: blob.type });
+    if (!d.ok) throw new Error(d.texto || "Não consegui transcrever.");
+    texto = (d.texto || "").trim();
+    if (!texto) { mensagem("erro", "Não entendi o que o senhor disse."); definirEstado("idle"); return; }
+  } catch (e) { mensagem("erro", e.message || "Falha ao transcrever."); definirEstado("idle"); return; }
+  finally { ocupado = false; $("#mic").disabled = false; }
+  conversar(texto);
+}
+$("#mic").addEventListener("click", () => { if (gravando) pararGravacao(); else if (!ocupado) iniciarGravacao(); });
+
+/* ---------- tarefas ---------- */
+const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+function rotuloPrazo(p) {
+  if (!p) return null;
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const [a, m, d] = p.split("-").map(Number), dt = new Date(a, m - 1, d), dias = Math.round((dt - hoje) / 864e5);
+  if (dias < 0) return ["vencida", "venceu " + d + " " + MESES[m - 1]];
+  if (dias === 0) return ["hoje", "hoje"];
+  if (dias === 1) return ["", "amanhã"];
+  return ["", d + " " + MESES[m - 1]];
+}
+async function carregarTarefas() {
+  if (!token) return;
+  try {
+    const d = await api("/api/tarefas");
+    if (d.ok === false) return;
+    const box = $("#lista"); box.textContent = "";
+    if (!(d.abertas || []).length) { const v = document.createElement("div"); v.className = "vazio"; v.textContent = "Nenhuma tarefa aberta."; box.appendChild(v); }
+    for (const t of d.abertas || []) {
+      const li = document.createElement("div"); li.className = "tarefa";
+      const b = document.createElement("button"); b.className = "check"; b.setAttribute("aria-label", "Concluir: " + t.texto);
+      b.addEventListener("click", async () => { b.disabled = true; li.style.opacity = ".4"; try { await api("/api/tarefas/concluir", { json: { id: t.id } }); } catch {} carregarTarefas(); });
+      const tx = document.createElement("div"); tx.className = "t"; tx.textContent = t.texto;
+      li.append(b, tx);
+      const r = rotuloPrazo(t.prazo);
+      if (r) { const s = document.createElement("span"); s.className = "badge " + r[0]; s.textContent = r[1]; li.appendChild(s); }
+      else if (t.prioridade === "alta") { const s = document.createElement("span"); s.className = "badge alta"; s.textContent = "alta"; li.appendChild(s); }
+      box.appendChild(li);
+    }
+    if ((d.concluidas || []).length) {
+      const h = document.createElement("div"); h.className = "feitas-t"; h.textContent = "Concluídas recentemente"; box.appendChild(h);
+      for (const t of d.concluidas) { const li = document.createElement("div"); li.className = "tarefa feita"; const tx = document.createElement("div"); tx.className = "t"; tx.textContent = t.texto; li.appendChild(tx); box.appendChild(li); }
+    }
+  } catch {}
+}
+let pendente = "";
+function aviso(txt) { const a = $("#aviso"); a.textContent = txt || ""; a.hidden = !txt; if (txt) setTimeout(() => { if (a.textContent === txt) a.hidden = true; }, 4000); }
+function mostrarChips(sim) {
+  const c = $("#chips"); c.textContent = ""; c.hidden = !sim;
+  if (!sim) return;
+  for (const [rot, q] of [["Hoje", "hoje"], ["Amanhã", "amanhã"], ["Em 1 semana", "semana que vem"], ["Sem data", ""]]) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.textContent = rot;
+    b.addEventListener("click", () => adicionarTarefa(pendente, q)); c.appendChild(b);
+  }
+}
+async function adicionarTarefa(texto, quando) {
+  try {
+    const d = await api("/api/tarefas/adicionar", { json: quando === undefined ? { texto } : { texto, quando } });
+    if (d.ok === false) { aviso(d.texto || "Não consegui anotar."); return; }
+    if (d.pergunta) { pendente = texto; mostrarChips(true); aviso(d.erro ? d.mensagem : "Para quando? (opcional)"); return; }
+    pendente = ""; mostrarChips(false); $("#nova").value = "";
+    aviso(d.mensagem || ""); carregarTarefas();
+  } catch (e) { aviso(e.message || "Falha ao anotar."); }
+}
+$("#f-tarefa").addEventListener("submit", e => { e.preventDefault(); const t = $("#nova").value.trim(); if (t) adicionarTarefa(t); });
+
+/* ---------- navegação ---------- */
+function ir(nome) {
+  for (const n of ["conversa", "tarefas"]) { $("#v-" + n).classList.toggle("ativa", n === nome); $("#n-" + n).classList.toggle("ativa", n === nome); }
+  if (nome === "tarefas") carregarTarefas();
+}
+$("#n-conversa").addEventListener("click", () => ir("conversa"));
+$("#n-tarefas").addEventListener("click", () => ir("tarefas"));
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { testarConexao(); if ($("#v-tarefas").classList.contains("ativa")) carregarTarefas(); } });
+
+/* ---------- partida ---------- */
+(async () => {
+  if (!token) return pedirToken("");
+  if (!(await testarConexao())) { ponto(false); mensagem("erro", "Não alcancei o Jarvis. O PC está ligado e o Tailscale conectado?"); }
+  carregarTarefas();
+})();
+</script>
+</body>
+</html>

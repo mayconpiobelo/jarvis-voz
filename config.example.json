@@ -107,6 +107,12 @@
       "maria": "(11) 90000-0000"
     }
   },
+  "celular": {
+    "enabled": false,
+    "host": "127.0.0.1",
+    "port": 8767,
+    "token": ""
+  },
   "painel": {
     "enabled": true,
     "hotkey": "ctrl+alt+t",
