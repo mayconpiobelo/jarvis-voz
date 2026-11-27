@@ -243,7 +243,7 @@ def test_pedido_ruim(servidor):
 
 def test_texto_longo_e_cortado(servidor):
     base, falso, _ = servidor
-    assert _chamar(base, "/api/perguntar", {"texto": "a" * 1000})[0] == 200
+    assert _chamar(base, "/api/perguntar", {"texto": "a" * 3000})[0] == 200
     assert len(falso.vistos[-1][1]) == celular.MAX_TEXTO
 
 
@@ -771,11 +771,17 @@ def test_cpu_do_celular_tem_janela_propria(monkeypatch):
     assert jarvis._cpu_prev is not None
 
 
-def test_pagina_tem_as_tres_abas():
+def test_pagina_tem_as_quatro_abas():
     html = (Path(__file__).resolve().parent.parent / "celular.html").read_text(encoding="utf-8")
-    for id_ in ("v-conversa", "v-painel", "v-tarefas", "n-conversa", "n-painel", "n-tarefas", "c-hoje", "c-uso", "c-tarefas", "c-musica"):
+    for id_ in ("v-falar", "v-conversa", "v-painel", "v-tarefas", "n-falar", "n-conversa", "n-painel", "n-tarefas",
+                "c-hoje", "c-uso", "c-tarefas", "c-musica", "orbe", "legenda", "falar-acoes", "chat"):
         assert f'id="{id_}"' in html, id_
     assert "/api/resumo" in html
+    # a esfera e a do PC: nuvem de pontos 3D (nao o circulo simples de antes)
+    assert "NP = 1500" in html and "2.399963229728653" in html and "ANEL" in html
+    # o microfone fica na tela Falar e o campo de texto na Conversa
+    falar, conversa = html.index('id="v-falar"'), html.index('id="v-conversa"')
+    assert falar < html.index('id="mic"') < conversa < html.index('id="texto"') < html.index('id="v-painel"')
 
 
 # ------------------------------------------------------------------ widget do iPhone (Scriptable)
@@ -825,3 +831,234 @@ def test_voz_no_celular_conclui_de_varias_formas(lista):
     assert jarvis.responder_celular("já fiz a tarefa do contador").startswith("Conclu")
     assert jarvis.responder_celular("pronto, terminei a tarefa do relatório").startswith("Conclu")
     assert [t["texto"] for t in lista.abertas()] == ["revisar contrato"]
+
+
+# ------------------------------------------------------------------ modo completo (mesmas ferramentas do PC + toque em Confirmar)
+@pytest.fixture
+def estado_tmp(tmp_path, monkeypatch):
+    monkeypatch.setattr(jarvis, "ESTADO_DIR", tmp_path)
+    monkeypatch.setattr(jarvis, "CELULAR_ARQ_TRAVA", tmp_path / "celular_trava.json")
+    monkeypatch.setattr(jarvis, "CELULAR_ARQ_AUDITORIA", tmp_path / "celular_auditoria.jsonl")
+    monkeypatch.setattr(jarvis, "_celular_acesso_ajustado", None)
+    monkeypatch.setitem(jarvis._celular_pend, "ate", 0.0)
+    monkeypatch.setitem(jarvis._celular_modo_aberto, "modo", "")
+    monkeypatch.setitem(jarvis.CFG, "confirm_by_voice", True)
+    monkeypatch.setitem(jarvis.CFG, "allow_outward_actions", False)
+    return tmp_path
+
+
+def test_acesso_padrao_e_so_consulta(estado_tmp, monkeypatch):
+    monkeypatch.setitem(jarvis.CFG, "celular", {})
+    assert jarvis.celular_acesso() == "consulta"
+    monkeypatch.setitem(jarvis.CFG, "celular", {"acesso": "completo"})
+    assert jarvis.celular_acesso() == "completo"
+    monkeypatch.setitem(jarvis.CFG, "celular", {"acesso": "qualquer-coisa"})
+    assert jarvis.celular_acesso() == "consulta"
+
+
+def test_sem_a_trava_ligada_nao_existe_modo_completo(estado_tmp, monkeypatch):
+    monkeypatch.setitem(jarvis.CFG, "celular", {"acesso": "completo"})
+    monkeypatch.setitem(jarvis.CFG, "confirm_by_voice", False)
+    assert jarvis.celular_acesso() == "consulta"
+    monkeypatch.setitem(jarvis.CFG, "confirm_by_voice", True)
+    monkeypatch.setitem(jarvis.CFG, "allow_outward_actions", True)
+    assert jarvis.celular_acesso() == "consulta"
+
+
+def test_interruptor_geral_fecha_a_sessao_e_registra(estado_tmp, monkeypatch):
+    monkeypatch.setitem(jarvis.CFG, "celular", {"acesso": "completo"})
+    fechou = []
+    monkeypatch.setattr(jarvis._sessao_celular, "fechar", lambda: fechou.append(1))
+    monkeypatch.setitem(jarvis._celular_pend, "ate", time.time() + 60)
+    assert jarvis.celular_acesso_baixar() == "consulta" and fechou == [1]
+    assert jarvis._celular_pend["ate"] == 0.0 and jarvis.celular_acesso() == "consulta"
+    assert jarvis.celular_atividade()[0]["tipo"] == "acesso"
+    assert jarvis.celular_acesso_ajustar("completo") == "completo"  # religar so pelo PC (bandeja); aqui, a funcao do PC
+
+
+def test_claude_completo_tem_as_ferramentas_e_a_trava_do_pc(estado_tmp, monkeypatch):
+    monkeypatch.setitem(jarvis.CFG, "celular", {"acesso": "completo"})
+    args = jarvis._celular_args_completo()
+    assert _valor(args, "--permission-mode") == jarvis.CFG["permission_mode"] and "dontAsk" not in args
+    assert "--tools" not in args and "--allowedTools" not in args  # todas as ferramentas, como no PC
+    assert "Bash(rm *)" in _valor(args, "--disallowedTools")  # apagar e destruir continuam bloqueados de vez
+    hooks = json.loads(_valor(args, "--settings"))["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+    assert "/api/trava" in hooks  # a trava roda antes de cada ferramenta
+    persona = _valor(args, "--append-system-prompt")
+    assert "MODO CELULAR" in persona and "Confirma, senhor?" in persona
+    assert _valor(args, "--session-id") != _valor(jarvis._celular_args_completo(), "--session-id")
+
+
+def test_sessao_do_celular_e_registrada_para_a_trava(estado_tmp):
+    for i in range(10):
+        jarvis._celular_registrar_sessao(["claude", "--session-id", f"S{i}"])
+    d = json.loads((estado_tmp / "celular_trava.json").read_text())
+    assert d["sessoes"] == [f"S{i}" for i in range(2, 10)]  # guarda as 8 ultimas
+    jarvis._celular_confirmar_sessao("S9", time.time() + 60)
+    assert "S9" in json.loads((estado_tmp / "celular_trava.json").read_text())["confirmado"]
+    jarvis._celular_confirmar_sessao("S9", None)
+    assert json.loads((estado_tmp / "celular_trava.json").read_text())["confirmado"] == {}
+    jarvis._celular_registrar_sessao(["claude"])  # sem --session-id: ignora
+
+
+def _celular_completo(monkeypatch, respostas, lista=None):
+    """Claude de mentira no modo completo: cada chamada devolve a proxima resposta e registra prompt e o toque vigente."""
+    monkeypatch.setitem(jarvis.CFG, "celular", {"acesso": "completo", "mem_min_livre_mb": 0})
+    monkeypatch.setattr(jarvis, "_busy", threading.Lock())
+    monkeypatch.setattr(jarvis._sessao_celular, "vivo", lambda: True)
+    jarvis._sessao_celular.sid = "S1"
+    chamadas = []
+
+    def perguntar(args, env, prompt, timeout):
+        estado = json.loads(jarvis.CELULAR_ARQ_TRAVA.read_text()) if jarvis.CELULAR_ARQ_TRAVA.exists() else {"confirmado": {}}
+        chamadas.append({"prompt": prompt, "toque": "S1" in estado["confirmado"], "timeout": timeout})
+        return {"result": respostas[len(chamadas) - 1]}, ""
+
+    monkeypatch.setattr(jarvis._sessao_celular, "perguntar", perguntar)
+    return chamadas
+
+
+def test_pedido_externo_vira_botao_confirmar_e_executa_so_apos_o_toque(estado_tmp, monkeypatch, lista):
+    chamadas = _celular_completo(monkeypatch, ["Vou enviar o e-mail para ana@exemplo.com. Confirma, senhor?", "E-mail enviado, senhor."])
+    r = jarvis.responder_celular("envie um e-mail para a Ana dizendo que chego às 15h")
+    assert r["confirmar"] is True and "ana@exemplo.com" in r["texto"]
+    assert chamadas[0]["toque"] is False  # a primeira volta nao tem toque: a trava barraria o envio
+    r2 = jarvis.celular_confirmar(True)
+    assert r2 == {"texto": "E-mail enviado, senhor.", "confirmar": False}
+    assert chamadas[1]["toque"] is True and chamadas[1]["prompt"].startswith("[CONFIRMADO pelo senhor pelo celular")
+    assert chamadas[1]["timeout"] == 120
+    assert json.loads(jarvis.CELULAR_ARQ_TRAVA.read_text())["confirmado"] == {}  # o toque some ao terminar
+    assert jarvis.celular_confirmar(True)["texto"].startswith("Nao ha nenhuma acao")  # nao da para confirmar duas vezes
+    tipos = [e["tipo"] for e in jarvis.celular_atividade()]
+    assert {"pergunta", "resposta", "confirmado"} <= set(tipos)
+
+
+def test_cancelar_nao_chama_o_claude_e_zera_a_proposta(estado_tmp, monkeypatch, lista):
+    chamadas = _celular_completo(monkeypatch, ["Vou enviar. Confirma, senhor?"])
+    jarvis.responder_celular("envie um e-mail para a Ana")
+    assert jarvis.celular_confirmar(False) == {"texto": "Cancelado, senhor.", "confirmar": False}
+    assert len(chamadas) == 1 and jarvis.celular_confirmar(True)["texto"].startswith("Nao ha nenhuma")
+
+
+def test_sim_e_nao_digitados_ou_falados_tambem_valem(estado_tmp, monkeypatch, lista):
+    chamadas = _celular_completo(monkeypatch, ["Vou criar o convite. Confirma, senhor?", "Convite criado.",
+                                               "Vou enviar. Confirma, senhor?"])
+    jarvis.responder_celular("crie um convite para amanhã às 10h")
+    assert jarvis.responder_celular("sim, confirma")["texto"] == "Convite criado." and chamadas[1]["toque"] is True
+    jarvis.responder_celular("envie o resumo para o chefe")
+    assert jarvis.responder_celular("não, cancela")["texto"] == "Cancelado, senhor." and len(chamadas) == 3
+
+
+def test_outro_assunto_cancela_a_proposta_pendente(estado_tmp, monkeypatch, lista):
+    chamadas = _celular_completo(monkeypatch, ["Vou enviar. Confirma, senhor?", "Hoje faz sol."])
+    jarvis.responder_celular("envie um e-mail para a Ana")
+    r = jarvis.responder_celular("qual a previsão do tempo hoje?")
+    assert r["texto"] == "Hoje faz sol." and chamadas[1]["toque"] is False
+    assert jarvis.celular_confirmar(True)["texto"].startswith("Nao ha nenhuma")  # a proposta antiga caiu
+
+
+def test_proposta_vencida_nao_pode_ser_confirmada(estado_tmp, monkeypatch, lista):
+    chamadas = _celular_completo(monkeypatch, ["Vou enviar. Confirma, senhor?"])
+    jarvis.responder_celular("envie um e-mail para a Ana")
+    jarvis._celular_pend["ate"] = time.time() - 1
+    assert jarvis.celular_confirmar(True)["texto"].startswith("Nao ha nenhuma") and len(chamadas) == 1
+
+
+def test_confirmar_de_outra_sessao_nao_vale(estado_tmp, monkeypatch, lista):
+    chamadas = _celular_completo(monkeypatch, ["Vou enviar. Confirma, senhor?"])
+    jarvis.responder_celular("envie um e-mail para a Ana")
+    jarvis._sessao_celular.sid = "OUTRA"  # o Claude foi reaberto: o contexto da proposta se perdeu
+    assert jarvis.celular_confirmar(True)["texto"].startswith("Nao ha nenhuma") and len(chamadas) == 1
+
+
+def test_no_modo_consulta_a_resposta_continua_texto_simples(estado_tmp, monkeypatch, lista):
+    monkeypatch.setitem(jarvis.CFG, "celular", {"mem_min_livre_mb": 0})
+    monkeypatch.setattr(jarvis, "_busy", threading.Lock())
+    monkeypatch.setattr(jarvis._sessao_celular, "vivo", lambda: True)
+    monkeypatch.setattr(jarvis._sessao_celular, "perguntar", lambda *a: ({"result": "Sao tres horas."}, ""))
+    r = jarvis.responder_celular("que horas sao")
+    assert r == "Sao tres horas."
+    assert jarvis.celular_confirmar(True)["texto"].startswith("Nao ha nenhuma")  # sem proposta nao ha o que confirmar
+
+
+def test_trocar_de_modo_reabre_o_claude_com_as_ferramentas_certas(estado_tmp, monkeypatch, lista):
+    monkeypatch.setattr(jarvis._sessao_celular, "vivo", lambda: True)
+    fechou = []
+    monkeypatch.setattr(jarvis._sessao_celular, "fechar", lambda: fechou.append(1))
+    monkeypatch.setattr(jarvis._sessao_celular, "perguntar", lambda *a: ({"result": "ok"}, ""))
+    jarvis._celular_modo_aberto["modo"] = "consulta"
+    jarvis._celular_claude("oi", "completo")
+    assert fechou == [1] and jarvis._celular_modo_aberto["modo"] == "completo"
+    jarvis._celular_claude("oi", "completo")
+    assert fechou == [1]  # mesmo modo: nao reabre
+
+
+def test_texto_na_tela_tira_markdown_e_guarda_as_linhas():
+    t = jarvis.texto_na_tela("## Agenda\n**09:00** reuniao\n- `10:30` almoco\n\n\n\n```\ncodigo\n```")
+    assert "**" not in t and "#" not in t and "`" not in t and "09:00 reuniao" in t and "\n- 10:30 almoco" in t
+    assert len(jarvis.texto_na_tela("a" * 9000)) == 4000
+
+
+def test_registro_de_atividade(estado_tmp):
+    jarvis.celular_auditar("pergunta", texto="x" * 1000)
+    jarvis.celular_auditar("resposta", texto="ok", confirmar=False, ferramentas=["Consultando a agenda"])
+    itens = jarvis.celular_atividade()
+    assert [i["tipo"] for i in itens] == ["resposta", "pergunta"]  # mais novo primeiro
+    assert len(itens[1]["texto"]) == 400 and itens[0]["ferramentas"] == ["Consultando a agenda"]
+    assert jarvis.celular_atividade(1)[0]["tipo"] == "resposta"
+
+
+def test_voz_longa_fala_o_comeco_e_avisa_que_o_resto_esta_na_tela(monkeypatch):
+    pedidos = []
+    monkeypatch.setitem(jarvis.CFG, "tts_engine", "fish")
+    monkeypatch.setattr(jarvis, "_gerador_fish", lambda: (lambda frase: (pedidos.append(frase), (np.zeros(240, "float32"), 24000))[1]))
+    jarvis.celular_falar(("Esta e uma frase de teste bem comprida para passar do limite de fala. " * 30).strip())
+    assert " ".join(pedidos).endswith("O restante esta na tela.")
+
+
+# ------------------------------------------------------------------ rotas novas do servidor
+def _g_completo(falso):
+    g = falso.ganchos()
+    estado = {"acesso": "completo"}
+    g.perguntar = lambda t: {"texto": "Vou enviar. Confirma, senhor?", "confirmar": True}
+    g.confirmar = lambda sim: {"texto": "Feito." if sim else "Cancelado.", "confirmar": False}
+    g.acesso = lambda: estado["acesso"]
+    g.acesso_baixar = lambda: estado.update(acesso="consulta") or "consulta"
+    g.atividade = lambda: [{"t": "2026-11-27 10:00:00", "tipo": "pergunta", "texto": "oi"}]
+    return g, estado
+
+
+def test_rotas_do_modo_completo_exigem_token_e_funcionam():
+    g, estado = _g_completo(_Falso())
+    srv, base = _subir(g)
+    try:
+        for caminho, corpo in (("/api/confirmar", {"sim": True}), ("/api/acesso", None), ("/api/acesso", {"acesso": "consulta"}), ("/api/atividade", None)):
+            assert _chamar(base, caminho, corpo, token=None)[0] == 401, caminho
+        _chamar(base, "/api/ping")  # o acerto zera os erros
+        code, r, _ = _chamar(base, "/api/perguntar", {"texto": "envie"})
+        assert code == 200 and r["confirmar"] is True and r["texto"].startswith("Vou enviar")
+        assert _chamar(base, "/api/confirmar", {"sim": True})[1]["texto"] == "Feito."
+        assert _chamar(base, "/api/confirmar", {"sim": False})[1]["texto"] == "Cancelado."
+        assert _chamar(base, "/api/confirmar", {"sim": "true"})[1]["texto"] == "Cancelado."  # so o booleano true confirma
+        assert _chamar(base, "/api/acesso")[1]["acesso"] == "completo"
+        assert _chamar(base, "/api/acesso", {"acesso": "completo"})[0] == 403  # o app nunca aumenta o acesso
+        assert estado["acesso"] == "completo"
+        assert _chamar(base, "/api/acesso", {"acesso": "consulta"})[1]["acesso"] == "consulta"
+        assert _chamar(base, "/api/atividade")[1]["itens"][0]["tipo"] == "pergunta"
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_rotas_novas_sem_gancho_dao_404(servidor):
+    base, _, _ = servidor
+    for caminho in ("/api/acesso", "/api/atividade"):
+        assert _chamar(base, caminho)[0] == 404
+    assert _chamar(base, "/api/confirmar", {"sim": True})[0] == 404
+
+
+def test_pagina_tem_confirmar_acesso_e_atividade():
+    html = (Path(__file__).resolve().parent.parent / "celular.html").read_text(encoding="utf-8")
+    for trecho in ("/api/confirmar", "/api/acesso", "/api/atividade", "btn-ok", "b-acesso", "ativ-lista"):
+        assert trecho in html, trecho
+    assert "innerHTML" not in html

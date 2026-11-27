@@ -48,10 +48,19 @@ main{flex:1;min-height:0;position:relative}
 .lbl{font-size:11px;font-weight:700;letter-spacing:.17em;text-transform:uppercase;color:var(--ac1);opacity:.9;display:flex;align-items:center;gap:8px;margin-bottom:10px}
 .lbl .sp{flex:1}.lbl .nota{letter-spacing:0;text-transform:none;font-weight:500;color:var(--mut);font-size:12px}
 /* conversa */
-.orbe{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;padding:2px 0 0}
-#orbe{width:190px;height:190px;touch-action:manipulation}
-#estado{color:var(--mut);font-size:13px;height:18px;margin-top:-6px}
-#chat{flex:1;min-height:0;overflow-y:auto;padding:8px 16px;display:flex;flex-direction:column;gap:8px;scroll-behavior:smooth}
+/* falar: a esfera ocupa a tela, com legenda e o microfone embaixo */
+#orbe{flex:1;min-height:0;width:100%;touch-action:manipulation;cursor:pointer}
+#estado{text-align:center;color:var(--mut);font-size:13px;height:18px;margin-top:-6px}
+.legenda{flex:0 0 auto;max-height:30%;overflow-y:auto;padding:8px 22px 2px;text-align:center;display:grid;gap:6px;justify-items:center}
+.l-eu{color:var(--faint);font-size:13px;overflow-wrap:anywhere}
+.l-jarvis{font-size:16px;line-height:1.38;white-space:pre-wrap;overflow-wrap:anywhere}
+.l-jarvis.erro{color:var(--bad);font-size:14px}
+.legenda .confirma{align-self:center;justify-content:center;margin:4px 0}
+.mic-area{flex:0 0 auto;display:flex;justify-content:center;padding:8px 0 14px}
+.mic.grande{width:76px;height:76px}
+.mic.grande svg.i{width:32px;height:32px}
+#estado2{flex:0 0 auto;text-align:center;color:var(--mut);font-size:12px;height:16px;margin-top:2px}
+#chat{flex:1;min-height:0;overflow-y:auto;padding:6px 16px;display:flex;flex-direction:column;gap:8px;scroll-behavior:smooth}
 .msg{max-width:86%;padding:10px 14px;border-radius:18px;border:1px solid var(--line);background:var(--glass);
   white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px}
 .msg.eu{align-self:flex-end;background:linear-gradient(135deg,rgba(77,213,255,.20),rgba(124,92,255,.22))}
@@ -133,6 +142,22 @@ nav button.ativa{color:var(--ac1)}
 #entrada input{height:46px;border-radius:12px;border:1px solid var(--line);background:var(--glass);color:var(--txt);padding:0 14px;font-size:16px}
 #entrada .ok{height:46px;border-radius:12px;background:var(--grad);color:#06101c;font-weight:700}
 #erro-token{color:var(--bad);font-size:14px;min-height:20px}
+/* modo completo: botões de confirmação, aviso de acesso e atividade */
+.confirma{display:flex;gap:10px;align-self:flex-start;margin:-2px 0 4px}
+.btn-ok{background:var(--grad);color:#06101c;font-weight:700;border-radius:14px;padding:11px 20px}
+.btn-no{border:1px solid var(--line);background:var(--glass);border-radius:14px;padding:11px 20px}
+.confirma button:disabled{opacity:.5}
+.pilula{white-space:nowrap;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:5px 9px;border-radius:999px;
+  border:1px solid rgba(251,191,36,.55);color:var(--warn);background:rgba(251,191,36,.08)}
+#ativ{position:fixed;inset:0;z-index:9;background:rgba(6,9,16,.97);display:none;flex-direction:column;padding:calc(var(--safe-t) + 14px) 16px 16px}
+#ativ.ativa{display:flex}
+#ativ .topo{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+#ativ h2{margin:0;flex:1;font-size:16px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
+#ativ-lista{flex:1;overflow-y:auto;display:grid;gap:8px;align-content:start}
+.ev{border:1px solid var(--line);background:var(--glass);border-radius:14px;padding:9px 12px;font-size:13px}
+.ev b{color:var(--ac1);font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-right:8px}
+.ev span{color:var(--mut);font-size:12px;float:right}
+.ev p{margin:4px 0 0;overflow-wrap:anywhere;white-space:pre-wrap}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
@@ -140,6 +165,10 @@ nav button.ativa{color:var(--ac1)}
 <header>
   <span class="ponto" id="ponto" title="conexão"></span>
   <h1>Jarvis</h1>
+  <button class="pilula" id="b-acesso" type="button" hidden title="Toque para desligar as ações do celular">Ações liberadas</button>
+  <button class="ico" id="b-ativ" aria-label="Atividade" title="Atividade">
+    <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+  </button>
   <button class="ico on" id="b-voz" aria-label="Voz do Jarvis ligada" title="Voz do Jarvis">
     <svg class="i" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
   </button>
@@ -149,15 +178,27 @@ nav button.ativa{color:var(--ac1)}
 </header>
 
 <main>
-  <section class="vista ativa" id="v-conversa">
-    <div class="orbe"><canvas id="orbe" aria-label="Esfera do Jarvis"></canvas><div id="estado" role="status"></div></div>
-    <div id="chat"><div class="vazio" id="vazio">Toque no microfone e fale, ou digite abaixo.<br>Aqui o Jarvis só consulta; ações ficam para o computador.</div></div>
-    <form class="compor" id="f-texto" autocomplete="off">
-      <input id="texto" type="text" inputmode="text" enterkeyhint="send" placeholder="Digite ao Jarvis" maxlength="500" aria-label="Mensagem">
-      <button class="enviar" type="submit" aria-label="Enviar"><svg class="i" viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button>
-      <button class="mic" type="button" id="mic" aria-label="Falar com o Jarvis">
+  <section class="vista ativa" id="v-falar">
+    <canvas id="orbe" role="img" aria-label="Esfera do Jarvis. Toque para falar."></canvas>
+    <div id="estado" role="status"></div>
+    <div class="legenda" id="legenda" aria-live="polite">
+      <div class="l-eu" id="l-eu"></div>
+      <div class="l-jarvis" id="l-jarvis">Toque na esfera ou no microfone e fale.</div>
+      <div class="confirma-falar" id="falar-acoes"></div>
+    </div>
+    <div class="mic-area">
+      <button class="mic grande" type="button" id="mic" aria-label="Falar com o Jarvis">
         <svg class="i" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
       </button>
+    </div>
+  </section>
+
+  <section class="vista" id="v-conversa">
+    <div id="estado2" role="status"></div>
+    <div id="chat"><div class="vazio" id="vazio">Aqui fica a conversa. Digite abaixo, ou fale na aba Falar.<br>Aqui o Jarvis só consulta; ações ficam para o computador.</div></div>
+    <form class="compor" id="f-texto" autocomplete="off">
+      <input id="texto" type="text" inputmode="text" enterkeyhint="send" placeholder="Digite ao Jarvis" maxlength="1500" aria-label="Mensagem">
+      <button class="enviar" type="submit" aria-label="Enviar"><svg class="i" viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button>
     </form>
   </section>
 
@@ -220,10 +261,16 @@ nav button.ativa{color:var(--ac1)}
 </main>
 
 <nav>
-  <button id="n-conversa" class="ativa"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>Conversa</button>
+  <button id="n-falar" class="ativa"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="8.5" stroke-dasharray="2 3"/></svg>Falar</button>
+  <button id="n-conversa"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>Conversa</button>
   <button id="n-painel"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="9" rx="2"/><rect x="13.5" y="3" width="7.5" height="5" rx="2"/><rect x="13.5" y="11" width="7.5" height="10" rx="2"/><rect x="3" y="15" width="7.5" height="6" rx="2"/></svg>Painel</button>
   <button id="n-tarefas"><svg class="i" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3.5 6 1.2 1.2L7 5M3.5 12l1.2 1.2L7 11M3.5 18l1.2 1.2L7 17"/></svg>Tarefas</button>
 </nav>
+
+<div id="ativ" role="dialog" aria-label="Atividade">
+  <div class="topo"><h2>Atividade</h2><button class="ico" id="ativ-fechar" aria-label="Fechar"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div id="ativ-lista"></div>
+</div>
 
 <div id="entrada">
   <form id="f-token">
@@ -295,37 +342,82 @@ $("#f-token").addEventListener("submit", async e => {
 });
 $("#b-sair").addEventListener("click", () => { if (confirm("Trocar o token deste aparelho?")) { guarda.apagar("jarvis_token"); token = ""; pedirToken(""); } });
 
-/* ---------- esfera ---------- */
-const COR = { idle: [77, 150, 255], listening: [52, 211, 153], thinking: [251, 191, 36], speaking: [77, 213, 255], error: [251, 113, 133] };
-const NOME = { idle: "", listening: "Ouvindo…", thinking: "Pensando…", speaking: "Falando…", error: "" };
+/* ---------- esfera (a mesma do PC: nuvem de 1500 pontos em 3D que gira, pulsa com a voz e ganha anéis ao trabalhar) ---------- */
+const HUE = { idle: [195, 55, 66], listening: [152, 75, 62], thinking: [30, 92, 60], speaking: [193, 100, 68], pending: [30, 92, 60], error: [350, 90, 66] };
+const NOME = { idle: "", listening: "Ouvindo…", thinking: "Pensando…", speaking: "Falando…", error: "", pending: "Aguardando o seu toque" };
+const REDUZIR = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const cv = $("#orbe"), cx = cv.getContext("2d");
-let corAtual = COR.idle.slice(), fase = 0;
-function ajustarCanvas() { const d = Math.min(devicePixelRatio || 1, 3), l = cv.clientWidth; cv.width = cv.height = Math.round(l * d); }
-function desenhar(t) {
-  fase = t / 1000;
-  if (!document.hidden && $("#v-conversa").classList.contains("ativa")) {
-    const alvo = COR[estado] || COR.idle;
-    for (let i = 0; i < 3; i++) corAtual[i] += (alvo[i] - corAtual[i]) * 0.08;
-    const n = cv.width, c = n / 2;
-    const nv = estado === "speaking" ? 0.35 + 0.35 * Math.abs(Math.sin(fase * 7.3) * Math.sin(fase * 3.1)) : estado === "listening" ? nivel : 0;
-    const resp = estado === "thinking" ? Math.sin(fase * 4) * 0.05 : Math.sin(fase * 1.4) * 0.025;
-    const r = n * (0.22 + resp + nv * 0.12);
-    cx.clearRect(0, 0, n, n);
-    const [R, G, B] = corAtual.map(Math.round);
-    const halo = cx.createRadialGradient(c, c, r * 0.4, c, c, n * 0.5);
-    halo.addColorStop(0, `rgba(${R},${G},${B},.35)`); halo.addColorStop(1, `rgba(${R},${G},${B},0)`);
-    cx.fillStyle = halo; cx.fillRect(0, 0, n, n);
-    const g = cx.createRadialGradient(c - r * 0.3, c - r * 0.35, r * 0.1, c, c, r);
-    g.addColorStop(0, "#ffffff"); g.addColorStop(0.25, `rgb(${R},${G},${B})`); g.addColorStop(1, `rgba(${Math.round(R * .45 + 70)},${Math.round(G * .3 + 40)},${Math.round(B * .5 + 120)},.95)`);
-    cx.beginPath(); cx.arc(c, c, r, 0, 7); cx.fillStyle = g; cx.fill();
-    cx.lineWidth = n * 0.006; cx.strokeStyle = `rgba(${R},${G},${B},.55)`;
-    for (let k = 1; k <= 2; k++) { cx.beginPath(); cx.arc(c, c, r * (1 + k * 0.22 + nv * 0.1 * k) + Math.sin(fase * 2 + k) * n * 0.004, 0, 7); cx.globalAlpha = 0.5 / k; cx.stroke(); }
-    cx.globalAlpha = 1;
-  }
-  requestAnimationFrame(desenhar);
+let W = 0, H = 0;
+function ajustarCanvas() {
+  const d = Math.min(2, devicePixelRatio || 1); W = cv.clientWidth; H = cv.clientHeight;
+  if (!W || !H) return;
+  cv.width = Math.round(W * d); cv.height = Math.round(H * d); cx.setTransform(d, 0, 0, d, 0, 0);
 }
-function definirEstado(e, texto) { estado = e; $("#estado").textContent = texto !== undefined ? texto : NOME[e] || ""; }
-addEventListener("resize", ajustarCanvas); ajustarCanvas(); requestAnimationFrame(desenhar);
+const NP = 1500, PTS = [];
+for (let i = 0; i < NP; i++) {                       // esfera de Fibonacci: pontos bem espalhados
+  const y = 1 - (i / (NP - 1)) * 2, r = Math.sqrt(1 - y * y), th = i * 2.399963229728653;
+  PTS.push([Math.cos(th) * r, y, Math.sin(th) * r, Math.random() * 6.2832]);
+}
+const ANEL = 130;
+let lvl = 0, rot = 0, giro = 0.0025, aneis = 0, hsl = HUE.idle.slice(), ultimo = performance.now();
+let propostaPendente = false, nivelFala = 0;
+function chaveEstado() { return estado === "idle" && propostaPendente ? "pending" : estado; }
+function desenhar(now) {
+  requestAnimationFrame(desenhar);
+  if (document.hidden || !$("#v-falar").classList.contains("ativa")) { ultimo = now; return; }   // economiza bateria fora da aba
+  if (!W || !H) { ajustarCanvas(); return; }
+  const dt = Math.min(10, Math.max(0.2, (now - ultimo) / 16.667)); ultimo = now;
+  const ease = k => 1 - Math.pow(1 - k, dt), t = now / 1000;
+  const st = estado, key = chaveEstado(), trabalhando = st === "thinking";
+  let alvo = st === "listening" ? nivel : st === "speaking" ? nivelFala
+    : trabalhando ? 0.2 + 0.12 * Math.sin(t * 3.2) : key === "pending" ? 0.1 + 0.07 * Math.sin(t * 2.6) : 0.05;
+  if (st === "listening") alvo = Math.max(alvo, 0.07 + 0.035 * Math.sin(t * 4));
+  if (REDUZIR) alvo *= 0.35;
+  lvl += (alvo - lvl) * ease(0.38);
+  const gAlvo = trabalhando ? 0.016 : st === "speaking" ? 0.007 : 0.0026;
+  giro += (gAlvo - giro) * ease(0.05); rot += (REDUZIR ? giro * 0.3 : giro) * dt;
+  aneis += (((trabalhando || key === "pending") ? 1 : 0) - aneis) * ease(0.06);
+  const hu = HUE[key] || HUE.idle;
+  for (let k = 0; k < 3; k++) hsl[k] += (hu[k] - hsl[k]) * ease(0.12);
+
+  cx.clearRect(0, 0, W, H);
+  const c0 = W / 2, c1 = H / 2, R = Math.min(W, H) * 0.3 * (1 + lvl * 0.28);
+  const g = cx.createRadialGradient(c0, c1, R * 0.05, c0, c1, R * 2.1);
+  g.addColorStop(0, `hsl(${hsl[0]} ${hsl[1]}% ${hsl[2]}% / ${0.12 + lvl * 0.28})`);
+  g.addColorStop(0.5, `hsl(${hsl[0]} ${hsl[1]}% ${hsl[2]}% / ${0.035 + lvl * 0.07})`);
+  g.addColorStop(1, `hsl(${hsl[0]} ${hsl[1]}% ${hsl[2]}% / 0)`);
+  cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+
+  const cr = Math.cos(rot), sr = Math.sin(rot), inc = 0.42, ci = Math.cos(inc), si = Math.sin(inc);
+  const forca = st === "speaking" || st === "listening" ? 0.62 : 0.34;
+  cx.fillStyle = `hsl(${hsl[0]} ${hsl[1]}% ${hsl[2]}%)`;
+  for (let i = 0; i < NP; i++) {
+    const q = PTS[i], w = 1 + lvl * forca * Math.sin(q[3] + t * 6 + q[1] * 5);
+    const x = q[0] * w, y = q[1] * w, z = q[2] * w;
+    const x1 = x * cr + z * sr, z1 = -x * sr + z * cr, y1 = y * ci - z1 * si, z2 = y * si + z1 * ci;
+    const prof = (z2 + 1.3) / 2.6, sc = 1.4 / (1.9 - z2 * 0.5), sz = (0.7 + 1.6 * prof) * (1 + lvl * 0.3);
+    cx.globalAlpha = Math.max(0.05, Math.min(1, 0.07 + 0.9 * prof * prof));
+    cx.fillRect(c0 + x1 * R * sc - sz / 2, c1 + y1 * R * sc - sz / 2, sz, sz);
+  }
+  if (aneis > 0.02) {
+    for (let k = 0; k < 2; k++) {
+      const incl = k ? 1.1 : -0.5, vel = (k ? -1 : 1) * t * (1.1 + k * 0.4);
+      for (let i = 0; i < ANEL; i++) {
+        const a = (i / ANEL) * 6.2832 + vel, rr = 1.32 + k * 0.16;
+        const x = Math.cos(a) * rr, y = Math.sin(a) * rr * Math.cos(incl), z = Math.sin(a) * rr * Math.sin(incl);
+        const dp = (z + 1.6) / 3.2; cx.globalAlpha = aneis * (0.12 + 0.75 * dp);
+        const s = 1 + 1.5 * dp; cx.fillRect(c0 + x * R - s / 2, c1 + y * R - s / 2, s, s);
+      }
+    }
+  }
+  cx.globalAlpha = 1;
+}
+function definirEstado(e, texto) {
+  estado = e;
+  const tx = texto !== undefined ? texto : (e === "idle" && propostaPendente ? NOME.pending : NOME[e] || "");
+  $("#estado").textContent = tx; $("#estado2").textContent = tx;
+}
+addEventListener("resize", ajustarCanvas); new ResizeObserver(ajustarCanvas).observe(cv); requestAnimationFrame(desenhar);
 
 /* ---------- conversa ---------- */
 function mensagem(classe, texto) {
@@ -333,23 +425,96 @@ function mensagem(classe, texto) {
   const d = document.createElement("div");
   d.className = "msg " + classe; d.textContent = texto;
   const chat = $("#chat"); chat.appendChild(d); chat.scrollTop = chat.scrollHeight;
+  if (classe === "eu") { $("#l-eu").textContent = texto; }                      // a legenda da tela Falar espelha a conversa
+  else { const l = $("#l-jarvis"); l.textContent = texto; l.className = "l-jarvis" + (classe === "erro" ? " erro" : ""); }
   return d;
+}
+function paraFalar(texto) {                       // só o começo, em frases corridas (listas viram frases); o resto fica na tela
+  let t = texto.split("\n").map(l => l.replace(/^\s*[-•]\s*/, "").trim()).filter(Boolean).join(". ").replace(/\.\.+/g, ".");
+  if (t.length > 700) { const c = t.slice(0, 700), f = Math.max(c.lastIndexOf(". "), c.lastIndexOf("? "), c.lastIndexOf("! ")); t = (f > 200 ? c.slice(0, f + 1) : c) + " O restante está na tela."; }
+  return t;
+}
+function limparConfirmar() { document.querySelectorAll(".confirma").forEach(c => c.remove()); propostaPendente = false; }
+function botoesConfirmar() {
+  propostaPendente = true;
+  const responder = async sim => { limparConfirmar(); await conversarConfirmacao(sim); };
+  const fazer = () => {                              // um par de botões na Conversa e outro na tela Falar
+    const c = document.createElement("div"); c.className = "confirma";
+    const ok = document.createElement("button"), no = document.createElement("button");
+    ok.type = no.type = "button"; ok.className = "btn-ok"; no.className = "btn-no"; ok.textContent = "Confirmar"; no.textContent = "Cancelar";
+    ok.addEventListener("click", () => responder(true)); no.addEventListener("click", () => responder(false));
+    c.append(ok, no); return c;
+  };
+  const chat = $("#chat"); chat.appendChild(fazer()); chat.scrollTop = chat.scrollHeight;
+  $("#falar-acoes").appendChild(fazer());
+}
+async function conversarConfirmacao(sim) {
+  if (ocupado) return;
+  ocupado = true; $("#mic").disabled = true; pararFala();
+  mensagem("eu", sim ? "Confirmar" : "Cancelar");
+  definirEstado("thinking", sim ? "Executando…" : "");
+  try { await responderDoJarvis(await api("/api/confirmar", { json: { sim } })); }
+  catch (e) { mensagem("erro", e.message || "Algo deu errado."); definirEstado("error", ""); setTimeout(() => estado === "error" && definirEstado("idle"), 1500); }
+  finally { ocupado = false; $("#mic").disabled = false; }
+}
+async function responderDoJarvis(d) {
+  if (!d.ok) throw new Error(d.texto || "Não consegui responder.");
+  mensagem("jarvis", d.texto);
+  if (d.confirmar) botoesConfirmar();
+  if (/tarefa|anotad|concluíd/i.test(d.texto)) carregarTarefas();
+  if (vozLigada) await falar(paraFalar(d.texto)); else definirEstado("idle");
+  definirEstado(estado);   // atualiza o rótulo ("Aguardando o seu toque" quando há proposta)
 }
 async function conversar(texto) {
   if (ocupado) return;
   ocupado = true; $("#mic").disabled = true;
   pararFala();
+  limparConfirmar();   // uma proposta nova (ou outro assunto) cancela a anterior
   mensagem("eu", texto);
   definirEstado("thinking");
-  try {
-    const d = await api("/api/perguntar", { json: { texto } });
-    if (!d.ok) throw new Error(d.texto || "Não consegui responder.");
-    mensagem("jarvis", d.texto);
-    if (/tarefa|anotad|concluíd/i.test(d.texto)) carregarTarefas();
-    if (vozLigada) await falar(d.texto); else definirEstado("idle");
-  } catch (e) { mensagem("erro", e.message || "Algo deu errado."); definirEstado("error", ""); setTimeout(() => estado === "error" && definirEstado("idle"), 1500); }
+  try { await responderDoJarvis(await api("/api/perguntar", { json: { texto } })); }
+  catch (e) { mensagem("erro", e.message || "Algo deu errado."); definirEstado("error", ""); setTimeout(() => estado === "error" && definirEstado("idle"), 1500); }
   finally { ocupado = false; $("#mic").disabled = false; }
 }
+
+/* ---------- acesso (modo completo) e atividade ---------- */
+async function carregarAcesso() {
+  if (!token) return;
+  try {
+    const d = await api("/api/acesso");
+    const completo = d.ok !== false && d.acesso === "completo";
+    $("#b-acesso").hidden = !completo;
+    const v = $("#vazio");
+    if (v) v.textContent = completo
+      ? "Aqui fica a conversa. Peça o que precisar: agenda, e-mails, tarefas, arquivos do PC. Ações como enviar e-mail pedem o seu toque em Confirmar."
+      : "Aqui fica a conversa. Digite abaixo, ou fale na aba Falar. Aqui o Jarvis só consulta; ações ficam para o computador.";
+  } catch {}
+}
+$("#b-acesso").addEventListener("click", async () => {
+  if (!confirm("Desligar as ações do celular? Ele passa a só consultar. Para religar, só pelo computador.")) return;
+  try { const d = await api("/api/acesso", { json: { acesso: "consulta" } }); if (d.ok) { $("#b-acesso").hidden = true; mensagem("jarvis", "Ações do celular desligadas, senhor. Agora só consulto."); } else mensagem("erro", d.texto || "Não consegui desligar."); }
+  catch (e) { mensagem("erro", e.message || "Falha ao desligar."); }
+});
+const ROTULO = { pergunta: "Pedido", resposta: "Resposta", confirmado: "Confirmado", cancelado: "Cancelado", acesso: "Acesso", tarefa: "Tarefa" };
+async function abrirAtividade() {
+  const box = $("#ativ-lista"); box.textContent = "";
+  $("#ativ").classList.add("ativa");
+  try {
+    const d = await api("/api/atividade");
+    const itens = d.itens || [];
+    if (!itens.length) { const v = document.createElement("div"); v.className = "vazio"; v.textContent = "Nada registrado ainda."; box.appendChild(v); }
+    for (const e of itens) {
+      const li = document.createElement("div"); li.className = "ev";
+      const b = document.createElement("b"); b.textContent = ROTULO[e.tipo] || e.tipo;
+      const h = document.createElement("span"); h.textContent = (e.t || "").slice(5, 16);
+      const p = document.createElement("p"); p.textContent = e.texto || (e.modo ? "modo: " + e.modo : "") + ((e.ferramentas || []).length ? " · " + e.ferramentas.join(", ") : "");
+      li.append(b, h, p); if (e.ferramentas && e.ferramentas.length && e.texto) { const f = document.createElement("p"); f.style.color = "var(--mut)"; f.textContent = "Usou: " + e.ferramentas.join(", "); li.appendChild(f); }
+      box.appendChild(li);
+    }
+  } catch (e) { const v = document.createElement("div"); v.className = "vazio"; v.textContent = e.message || "Não consegui carregar."; box.appendChild(v); }
+}
+$("#b-ativ").addEventListener("click", abrirAtividade);
+$("#ativ-fechar").addEventListener("click", () => $("#ativ").classList.remove("ativa"));
 $("#f-texto").addEventListener("submit", e => {
   e.preventDefault();
   desbloquearAudio();
@@ -370,13 +535,47 @@ function pararFala() {
   if (urlAtual) { URL.revokeObjectURL(urlAtual); urlAtual = ""; }
   if (estado === "speaking") definirEstado("idle");
 }
-function tocar(blob) {
+async function envelopeWav(blob) {                // volume da voz a cada ~33 ms, lido do próprio WAV (sem WebAudio, que o iOS complica)
+  try {
+    const buf = await blob.arrayBuffer(), dv = new DataView(buf);
+    if (dv.getUint32(0, false) !== 0x52494646) return null;     // "RIFF"
+    let off = 12, sr = 24000, ch = 1, bits = 16, ini = -1, tam = 0;
+    while (off + 8 <= buf.byteLength) {
+      const id = dv.getUint32(off, false), size = dv.getUint32(off + 4, true);
+      if (id === 0x666d7420) { ch = dv.getUint16(off + 10, true); sr = dv.getUint32(off + 12, true); bits = dv.getUint16(off + 22, true); }
+      else if (id === 0x64617461) { ini = off + 8; tam = Math.min(size, buf.byteLength - ini); break; }
+      off += 8 + size + (size & 1);
+    }
+    if (ini < 0 || bits !== 16 || !ch) return null;
+    const n = Math.floor(tam / 2 / ch), jan = Math.max(1, Math.floor(sr / 30)), vals = [];
+    for (let i = 0; i < n; i += jan) {
+      let s = 0, c = 0;
+      for (let j = i; j < Math.min(n, i + jan); j++) { const v = dv.getInt16(ini + j * ch * 2, true) / 32768; s += v * v; c++; }
+      vals.push(Math.sqrt(s / c));
+    }
+    const ordenado = vals.filter(v => v > 0.004).sort((a, b) => a - b);          // normaliza pela fala: o volume do áudio não achata a esfera
+    const ref = ordenado.length ? ordenado[Math.floor(ordenado.length * 0.92)] : 0.1;
+    return { fps: sr / jan, vals: vals.map(v => Math.min(1, Math.pow(v / Math.max(ref, 0.02), 0.8) * 0.9)) };
+  } catch { return null; }
+}
+let relFala = 0;
+function acompanharFala(env) {                       // dirige a esfera pelo tempo de reprodução
+  cancelAnimationFrame(relFala);
+  const passo = () => {
+    if (estado !== "speaking") { nivelFala = 0; return; }
+    if (env && env.vals.length) { const i = Math.floor(player.currentTime * env.fps); nivelFala = env.vals[Math.min(i, env.vals.length - 1)] || 0; }
+    else nivelFala = 0.35 + 0.35 * Math.abs(Math.sin(performance.now() / 137) * Math.sin(performance.now() / 320));
+    relFala = requestAnimationFrame(passo);
+  };
+  passo();
+}
+function tocar(blob, env) {
   return new Promise(ok => {
     urlAtual = URL.createObjectURL(blob);
     player.src = urlAtual;
-    const fim = () => { player.onended = player.onerror = null; ok(); };
+    const fim = () => { player.onended = player.onerror = null; nivelFala = 0; ok(); };
     player.onended = fim; player.onerror = fim;
-    player.play().catch(fim);
+    player.play().then(() => acompanharFala(env)).catch(fim);
   });
 }
 function falarLocal(texto) {
@@ -390,7 +589,7 @@ async function falar(texto) {
   definirEstado("speaking");
   try {
     const d = await api("/api/falar", { json: { texto }, audio: true });
-    if (d.blob) await tocar(d.blob); else await falarLocal(texto);
+    if (d.blob) await tocar(d.blob, await envelopeWav(d.blob)); else { acompanharFala(null); await falarLocal(texto); }
   } catch { await falarLocal(texto); }
   finally { if (estado === "speaking") definirEstado("idle"); }
 }
@@ -401,7 +600,9 @@ $("#b-voz").addEventListener("click", () => {
   if (!vozLigada) pararFala();
 });
 $("#b-voz").classList.toggle("on", vozLigada);
-cv.addEventListener("click", () => { if (estado === "speaking") pararFala(); });
+cv.addEventListener("click", () => {            // como no PC: tocar na esfera fala; durante a fala, para
+  if (estado === "speaking") pararFala(); else if (gravando) pararGravacao(); else if (!ocupado) iniciarGravacao();
+});
 
 /* ---------- microfone ---------- */
 let rec = null, fluxo = null, ctxAudio = null, trechos = [], cancelada = false;
@@ -640,16 +841,19 @@ $("#ver-tarefas").addEventListener("click", () => ir("tarefas"));
 
 /* ---------- navegação ---------- */
 function ir(nome) {
-  for (const n of ["conversa", "painel", "tarefas"]) { $("#v-" + n).classList.toggle("ativa", n === nome); $("#n-" + n).classList.toggle("ativa", n === nome); }
+  for (const n of ["falar", "conversa", "painel", "tarefas"]) { $("#v-" + n).classList.toggle("ativa", n === nome); $("#n-" + n).classList.toggle("ativa", n === nome); }
   if (nome === "tarefas") carregarTarefas();
   if (nome === "painel") { renderPainel(); carregarPainel(); }
+  if (nome === "falar") ajustarCanvas();
+  if (nome === "conversa") { const c = $("#chat"); c.scrollTop = c.scrollHeight; }
 }
+$("#n-falar").addEventListener("click", () => ir("falar"));
 $("#n-conversa").addEventListener("click", () => ir("conversa"));
 $("#n-painel").addEventListener("click", () => ir("painel"));
 $("#n-tarefas").addEventListener("click", () => ir("tarefas"));
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) return;
-  testarConexao(); carregarPainel();
+  testarConexao(); carregarPainel(); carregarAcesso();
   if ($("#v-tarefas").classList.contains("ativa")) carregarTarefas();
 });
 
@@ -657,7 +861,7 @@ document.addEventListener("visibilitychange", () => {
 (async () => {
   if (!token) return pedirToken("");
   if (!(await testarConexao())) { ponto(false); mensagem("erro", "Não alcancei o Jarvis. O PC está ligado e o Tailscale conectado?"); }
-  carregarTarefas();
+  carregarTarefas(); carregarAcesso();
 })();
 </script>
 </body>

@@ -115,6 +115,28 @@ def confirmado() -> bool:
         return False
 
 
+CELULAR_ARQ = ESTADO / "celular_trava.json"
+
+
+def _estado_celular() -> dict:
+    try:
+        d = json.loads(CELULAR_ARQ.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def sessao_do_celular(sid: str) -> bool:
+    """Esta sessao do Claude e a do app de celular? (o jarvis.py registra as sessoes dele em celular_trava.json)"""
+    return bool(sid) and sid in (_estado_celular().get("sessoes") or [])
+
+
+def confirmado_celular(sid: str) -> bool:
+    """O toque em "Confirmar" no celular vale so para a SESSAO do celular que o recebeu, e ate expirar."""
+    ate = (_estado_celular().get("confirmado") or {}).get(sid)
+    return isinstance(ate, (int, float)) and not isinstance(ate, bool) and ate > time.time()
+
+
 def barrar(o_que: str) -> None:
     log(f"BARRADO: {o_que}")
     raise Barrado(
@@ -137,7 +159,15 @@ def avaliar(dados: dict) -> None:
     nome = dados.get("tool_name", "")
     entrada = dados.get("tool_input") or {}
 
-    if nome in LIVRES or confirmado():
+    if nome in LIVRES:
+        return
+    sid = str(dados.get("session_id") or "")
+    if sessao_do_celular(sid):
+        # Sessao do celular: so vale o toque em "Confirmar" DESTA sessao. A confirmacao por voz do PC (global) nao vale
+        # aqui, e a do celular nao vale para o PC.
+        if confirmado_celular(sid):
+            return
+    elif confirmado():
         return
 
     if nome in PEDEM_CONFIRMACAO_NATIVAS:

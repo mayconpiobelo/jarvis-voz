@@ -33,7 +33,8 @@ PORTA_PADRAO = 8767
 TOKEN_MIN = 24                 # caracteres; `gerar_token()` faz 43
 MAX_JSON = 4096                # bytes de um pedido JSON
 MAX_AUDIO = 6_000_000          # bytes de uma gravacao (cerca de 1 min em AAC)
-MAX_TEXTO = 500                # caracteres do que foi falado ou digitado
+MAX_TEXTO = 1500               # caracteres do que foi falado ou digitado (um pedido de e-mail pode ser longo)
+MAX_FALAR = 800                # caracteres que o app manda falar (o resto fica so na tela)
 ERROS_ANTES_DE_TRAVAR = 5
 TRAVA_SEGUNDOS = 300.0
 
@@ -59,6 +60,10 @@ class Ganchos:
     tarefas: Callable[[], dict]                            # {"abertas": [...], "concluidas": [...]}
     tarefa_adicionar: Callable[[str, str | None], dict]    # (texto, quando|None) -> {"ok", "mensagem", "pergunta"}
     tarefa_concluir: Callable[[int], bool]
+    confirmar: Callable[[bool], object] | None = None        # toque em Confirmar/Cancelar de uma acao proposta (modo completo)
+    acesso: Callable[[], str] | None = None                  # 'completo' ou 'consulta'
+    acesso_baixar: Callable[[], str] | None = None           # botao de panico: volta para 'consulta' (so reduz, nunca aumenta)
+    atividade: Callable[[], list] | None = None              # registro das ultimas atividades do celular
     resumo: Callable[[], dict] | None = None               # clima, PC, uso do Claude, musica e contagem de tarefas (so leitura)
 
 
@@ -163,6 +168,11 @@ MANIFEST = json.dumps({
 }).encode("utf-8")
 
 
+def _campos(r) -> dict:
+    """O gancho devolve so o texto ou um dict ({"texto":..., "confirmar": bool}); a resposta sempre tem "texto"."""
+    return dict(r) if isinstance(r, dict) else {"texto": r}
+
+
 def criar_servidor(host: str, porta: int, token: str, g: Ganchos) -> ThreadingHTTPServer:
     """Monta (sem iniciar) o servidor. Levanta ValueError se o host nao for permitido ou o token for curto."""
     if not host_permitido(host):
@@ -243,12 +253,12 @@ def criar_servidor(host: str, porta: int, token: str, g: Ganchos) -> ThreadingHT
                 return None
             return dados
 
-        def _texto(self, dados: dict) -> str | None:
+        def _texto(self, dados: dict, limite: int = MAX_TEXTO) -> str | None:
             t = str(dados.get("texto", "")).strip()
             if not t:
                 self._erro(400, "Nao ouvi nada, senhor.")
                 return None
-            return t[:MAX_TEXTO]
+            return t[:limite]
 
         def _com_vaga(self, nome: str, fazer: Callable[[], None]) -> None:
             if not vagas[nome].acquire(blocking=False):
@@ -292,6 +302,10 @@ def criar_servidor(host: str, porta: int, token: str, g: Ganchos) -> ThreadingHT
                 return self._json(200, True, texto="Jarvis ao seu dispor, senhor.")
             if caminho == "/api/tarefas":
                 return self._json(200, True, **g.tarefas())
+            if caminho == "/api/acesso" and g.acesso is not None:
+                return self._json(200, True, acesso=g.acesso(), pode_baixar=g.acesso_baixar is not None)
+            if caminho == "/api/atividade" and g.atividade is not None:
+                return self._json(200, True, itens=g.atividade())
             if caminho == "/api/resumo" and g.resumo is not None:
                 try:
                     return self._json(200, True, **g.resumo())
@@ -320,11 +334,26 @@ def criar_servidor(host: str, porta: int, token: str, g: Ganchos) -> ThreadingHT
                 texto = None if corpo is None else self._texto(corpo)
                 if texto is None:
                     return
-                return self._com_vaga("perguntar", lambda: self._json(200, True, texto=g.perguntar(texto)))
+                return self._com_vaga("perguntar", lambda: self._json(200, True, **_campos(g.perguntar(texto))))
+
+            if caminho == "/api/confirmar" and g.confirmar is not None:
+                corpo = self._json_corpo()
+                if corpo is None:
+                    return
+                sim = corpo.get("sim") is True
+                return self._com_vaga("perguntar", lambda: self._json(200, True, **_campos(g.confirmar(sim))))
+
+            if caminho == "/api/acesso" and g.acesso_baixar is not None:
+                corpo = self._json_corpo()
+                if corpo is None:
+                    return
+                if corpo.get("acesso") != "consulta":  # o app so reduz o acesso; aumentar e so pelo PC
+                    return self._erro(403, "O acesso completo so pode ser ligado pelo computador.")
+                return self._json(200, True, acesso=g.acesso_baixar())
 
             if caminho == "/api/falar":
                 corpo = self._json_corpo()
-                texto = None if corpo is None else self._texto(corpo)
+                texto = None if corpo is None else self._texto(corpo, MAX_FALAR)
                 if texto is None:
                     return
 
@@ -387,5 +416,5 @@ def iniciar(cfg: dict, g: Ganchos) -> ThreadingHTTPServer | None:
         log.warning("celular desligado: %s", e)
         return None
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    log.info("celular em http://%s:%s (conversa somente-consulta + tarefas)", *srv.server_address[:2])
+    log.info("celular em http://%s:%s (modo %s)", *srv.server_address[:2], (cfg.get("celular") or {}).get("acesso", "consulta"))
     return srv

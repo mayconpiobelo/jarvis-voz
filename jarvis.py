@@ -907,6 +907,8 @@ class SessaoClaude:
     def __init__(self, ferramentas: list | None = None, minutos_ociosos=None) -> None:
         # ferramentas=None: acompanha na esfera/painel (Jarvis local). Lista propria: sessao isolada (celular).
         self.ferramentas = ferramentas
+        self.ao_abrir = None  # callback(args) quando um processo novo abre (o celular registra a sessao na trava)
+        self.sid = ""         # id da sessao do Claude aberta agora (de --session-id)
         self.minutos_ociosos = minutos_ociosos or (lambda: float(CFG.get("claude_idle_minutes", 20)))
         self.proc: subprocess.Popen | None = None
         self.fila: queue.Queue = queue.Queue()
@@ -931,6 +933,12 @@ class SessaoClaude:
             proc = subprocess.Popen(entrada, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                     cwd=expand_path(CFG["workdir"]), env=env, creationflags=NO_WINDOW)
             _preso_ao_servico(proc)
+            self.sid = entrada[entrada.index("--session-id") + 1] if "--session-id" in entrada else ""
+            if self.ao_abrir:  # antes de qualquer ferramenta rodar: a trava precisa saber que esta sessao e do celular
+                try:
+                    self.ao_abrir(entrada)
+                except Exception:
+                    log.exception("falha ao registrar a sessao")
 
             def ler() -> None:
                 for raw in proc.stdout:  # type: ignore[union-attr]
@@ -1153,7 +1161,9 @@ def _celular_args() -> list[str]:
 
 # Sessao propria e ISOLADA do Jarvis local: lista de ferramentas separada (nao aparece na esfera nem afeta a do PC) e
 # fecha rapido quando ninguem usa, para devolver a memoria.
-_sessao_celular = SessaoClaude(ferramentas=[], minutos_ociosos=lambda: float(celular_cfg().get("idle_minutes", 3)))
+_sessao_celular = SessaoClaude(ferramentas=[], minutos_ociosos=lambda: float(
+    celular_cfg().get("idle_minutes", 10 if celular_acesso() == "completo" else 3)))
+_sessao_celular.ao_abrir = lambda args: _celular_registrar_sessao(args)
 
 
 def _tarefas_resumo() -> str:
@@ -1194,15 +1204,212 @@ def _tarefas_celular(texto: str) -> str | None:
     return re.sub(r"\s*Para quando\?.*$", "", fala)
 
 
-def responder_celular(texto: str) -> str:
-    """Pergunta vinda do celular: tarefas na hora; o resto vai ao Claude somente-consulta, resposta curta e limpa."""
+# ---- modo completo do celular: as mesmas ferramentas do PC, com a trava e o seu toque em "Confirmar"
+CELULAR_EXTRA_COMPLETO = (
+    " MODO CELULAR: o senhor esta no app de celular. A resposta aparece na tela e a primeira parte tambem e falada; "
+    "pode usar ate 10 linhas curtas, com listas simples iniciadas por hifen, sem asteriscos, sem tabelas e sem links. "
+    "Para agenda ou e-mails, uma linha por item, com horario ou remetente. A trava de seguranca continua valendo: no celular "
+    "o senhor confirma tocando no botao Confirmar da tela (a sua pergunta 'Confirma, senhor?' vira esse botao)."
+)
+_celular_acesso_ajustado: str | None = None   # troca em tempo de execucao (bandeja ou app); vence o config
+_celular_pend = {"sid": "", "ate": 0.0}       # acao proposta que aguarda o toque em Confirmar
+_celular_modo_aberto = {"modo": ""}
+_celular_arq_lock = threading.Lock()
+CELULAR_ARQ_TRAVA = ESTADO_DIR / "celular_trava.json"  # o mesmo arquivo que a trava.py le
+
+
+def celular_acesso() -> str:
+    """'completo' (mesmas ferramentas do PC; acoes externas so com o seu toque em Confirmar) ou 'consulta'.
+    Sem a trava de seguranca ligada nao existe modo completo."""
+    modo = _celular_acesso_ajustado or str(celular_cfg().get("acesso", "consulta"))
+    if modo == "completo" and hook_settings() is None:
+        return "consulta"
+    return "completo" if modo == "completo" else "consulta"
+
+
+def celular_acesso_ajustar(modo: str) -> str:
+    global _celular_acesso_ajustado
+    _celular_acesso_ajustado = "completo" if modo == "completo" else "consulta"
+    _sessao_celular.fechar()  # a proxima conversa abre com as ferramentas do novo modo
+    _celular_pend["ate"] = 0.0
+    celular_auditar("acesso", modo=_celular_acesso_ajustado)
+    log.info("celular: acesso %s", _celular_acesso_ajustado)
+    return celular_acesso()
+
+
+def celular_acesso_baixar() -> str:
+    """O app so pode REDUZIR o acesso (botao de panico); aumentar e so pelo PC (bandeja ou config)."""
+    return celular_acesso_ajustar("consulta")
+
+
+def _celular_trava_ler() -> dict:
+    try:
+        d = json.loads(CELULAR_ARQ_TRAVA.read_text(encoding="utf-8"))
+        if isinstance(d, dict):
+            return {"sessoes": list(d.get("sessoes") or []), "confirmado": dict(d.get("confirmado") or {})}
+    except (OSError, ValueError):
+        pass
+    return {"sessoes": [], "confirmado": {}}
+
+
+def _celular_trava_gravar(d: dict) -> None:
+    ESTADO_DIR.mkdir(exist_ok=True)
+    tmp = CELULAR_ARQ_TRAVA.with_suffix(".tmp")
+    tmp.write_text(json.dumps(d), encoding="utf-8")
+    os.replace(tmp, CELULAR_ARQ_TRAVA)
+
+
+def _celular_registrar_sessao(args: list[str]) -> None:
+    """Avisa a trava de que esta sessao do Claude e do celular (so o toque em Confirmar dela libera acoes externas)."""
+    if "--session-id" not in args:
+        return
+    sid = args[args.index("--session-id") + 1]
+    with _celular_arq_lock:
+        d = _celular_trava_ler()
+        if sid not in d["sessoes"]:
+            d["sessoes"].append(sid)
+        d["sessoes"] = d["sessoes"][-8:]
+        d["confirmado"] = {k: v for k, v in d["confirmado"].items() if k in d["sessoes"]}
+        _celular_trava_gravar(d)
+
+
+def _celular_confirmar_sessao(sid: str, ate: float | None) -> None:
+    with _celular_arq_lock:
+        d = _celular_trava_ler()
+        if ate:
+            d["confirmado"][sid] = ate
+        else:
+            d["confirmado"].pop(sid, None)
+        _celular_trava_gravar(d)
+
+
+CELULAR_ARQ_AUDITORIA = ESTADO_DIR / "celular_auditoria.jsonl"
+
+
+def celular_auditar(tipo: str, **campos) -> None:
+    """Uma linha por fato (pedido, resposta, confirmacao, ferramentas usadas, troca de acesso). Fica so no PC (.estado)."""
+    try:
+        reg = {"t": time.strftime("%Y-%m-%d %H:%M:%S"), "tipo": tipo}
+        for k, v in campos.items():
+            reg[k] = v[:400] if isinstance(v, str) else v
+        with _celular_arq_lock:
+            ESTADO_DIR.mkdir(exist_ok=True)
+            if CELULAR_ARQ_AUDITORIA.exists() and CELULAR_ARQ_AUDITORIA.stat().st_size > 1_000_000:
+                os.replace(CELULAR_ARQ_AUDITORIA, CELULAR_ARQ_AUDITORIA.with_suffix(".1.jsonl"))
+            with CELULAR_ARQ_AUDITORIA.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(reg, ensure_ascii=False) + "\n")
+    except OSError:
+        log.exception("nao consegui gravar o registro do celular")
+
+
+def celular_atividade(n: int = 40) -> list[dict]:
+    """Ultimos registros (mais novos primeiro) para a tela de atividade do app."""
+    try:
+        linhas = CELULAR_ARQ_AUDITORIA.read_text(encoding="utf-8").splitlines()[-n:]
+    except OSError:
+        return []
+    out = []
+    for ln in reversed(linhas):
+        try:
+            out.append(json.loads(ln))
+        except ValueError:
+            continue
+    return out
+
+
+def _celular_args_completo() -> list[str]:
+    """Claude Code com as MESMAS ferramentas e a mesma trava do PC, em sessao propria (nova a cada abertura)."""
+    persona = (CFG["persona"].replace("{dono}", CFG.get("owner_name", "o usuario")) + tarefas_prompt()
+               + CELULAR_EXTRA_COMPLETO)
+    args = [
+        expand_path(CFG["claude_exe"]), "-p", "--output-format", "stream-json", "--verbose",
+        "--permission-mode", CFG["permission_mode"],
+        "--append-system-prompt", persona,
+        "--disallowedTools", ",".join(deny_list()),
+    ]
+    for d in CFG.get("add_dirs", []):
+        args += ["--add-dir", expand_path(d)]
+    args += ["--settings", hook_settings() or "{}"]
+    if CFG.get("claude_model"):
+        args += ["--model", str(CFG["claude_model"])]
+    if CFG.get("claude_effort"):
+        args += ["--effort", str(CFG["claude_effort"])]
+    args += ["--session-id", str(uuid.uuid4())]
+    return args
+
+
+def texto_na_tela(texto: str, limite: int = 4000) -> str:
+    """Resposta para ler na tela: sem marcas de markdown, mas com as linhas; sem o corte de 700 caracteres da fala."""
+    t = re.sub(r"```[a-zA-Z]*\n?", "", texto)
+    t = re.sub(r"\*\*|__|`", "", t)
+    t = re.sub(r"^\s{0,3}#{1,6}\s*", "", t, flags=re.M)
+    return re.sub(r"\n{3,}", "\n\n", t).strip()[:limite]
+
+
+def _celular_claude(prompt: str, modo: str) -> tuple[dict | None, str]:
+    if _sessao_celular.vivo() and _celular_modo_aberto["modo"] != modo:
+        _sessao_celular.fechar()  # o processo aberto tem as ferramentas do outro modo
+    _celular_modo_aberto["modo"] = modo
+    args = _celular_args_completo() if modo == "completo" else _celular_args()
+    return _sessao_celular.perguntar(args, _claude_env(), prompt,
+                                     float(celular_cfg().get("timeout_seconds", 120 if modo == "completo" else 60)))
+
+
+def _celular_resposta(data: dict | None, err: str, modo: str):
+    if data is None:
+        log.error("celular: claude falhou: %s", err[:500])
+        return "Nao consegui falar com o Claude, senhor."
+    resposta = (data.get("result") or "").strip()
+    log.info("celular, resposta: %s", resposta[:500])
+    if modo != "completo":
+        return clean_for_speech(resposta) or "Nao tenho nada a dizer, senhor."
+    tela = texto_na_tela(resposta) or "Nao tenho nada a dizer, senhor."
+    confirmar = asks_confirmation(resposta)  # "Confirma, senhor?" vira o botao Confirmar no app
+    if confirmar:
+        _celular_pend.update(sid=_sessao_celular.sid, ate=time.time() + int(CFG.get("confirm_ttl_seconds", 120)))
+    celular_auditar("resposta", texto=tela, confirmar=confirmar, ferramentas=[t["label"] for t in _sessao_celular.ferramentas or []])
+    return {"texto": tela, "confirmar": confirmar}
+
+
+def celular_confirmar(sim: bool):
+    """Toque em Confirmar/Cancelar (ou 'sim'/'nao' dito ou digitado). Vale so para a acao que acabou de ser proposta."""
+    sid = _sessao_celular.sid
+    valido = bool(sid) and sid == _celular_pend["sid"] and _celular_pend["ate"] > time.time() and _sessao_celular.vivo()
+    _celular_pend["ate"] = 0.0
+    if not sim:
+        celular_auditar("cancelado")
+        return {"texto": "Cancelado, senhor.", "confirmar": False}
+    if not valido:
+        return {"texto": "Nao ha nenhuma acao aguardando confirmacao, senhor. Faca o pedido de novo.", "confirmar": False}
+    _celular_confirmar_sessao(sid, time.time() + int(CFG.get("confirm_ttl_seconds", 120)))  # vale so para ESTA sessao
+    celular_auditar("confirmado")
+    log.info("celular: confirmacao por toque recebida")
+    try:
+        prompt = ("[CONFIRMADO pelo senhor pelo celular: execute agora a acao que voce acabou de propor, "
+                  "e somente ela.] sim")
+        data, err = _celular_claude(prompt, "completo")
+        return _celular_resposta(data, err, "completo")
+    finally:
+        _celular_confirmar_sessao(sid, None)
+
+
+def responder_celular(texto: str):
+    """Pergunta vinda do celular: tarefas na hora; o resto vai ao Claude (somente consulta, ou completo com a trava)."""
     import celular
     from datetime import datetime
 
-    log.info("celular, pergunta: %s", texto)
+    modo = celular_acesso()
+    log.info("celular (%s), pergunta: %s", modo, texto)
+    celular_auditar("pergunta", texto=texto, modo=modo)
     fala = _tarefas_celular(texto)
     if fala is not None:
+        celular_auditar("tarefa", texto=fala)
         return fala
+    if modo == "completo" and _celular_pend["ate"] > time.time():  # "sim"/"nao" digitado ou falado tambem vale
+        c = classify_confirmation(texto)
+        if c in ("sim", "nao"):
+            return celular_confirmar(c == "sim")
+        _celular_pend["ate"] = 0.0  # outra coisa: a pergunta caiu
     if _busy.locked():  # o senhor esta falando com o Jarvis no PC: o uso local tem prioridade
         raise celular.Ocupado("O Jarvis esta atendendo o senhor no computador agora. Tente de novo em instantes.")
     if not _sessao_celular.vivo():  # abrir outro Claude custa memoria (~375 MB); com o PC apertado, o celular espera
@@ -1219,15 +1426,9 @@ def responder_celular(texto: str) -> str:
         except Exception:
             pass
     agora = datetime.now().strftime("%A, %d/%m/%Y, %H:%M")
-    prompt = f"[Hora local: {agora}]\n{_tarefas_resumo()}{texto}"
-    data, err = _sessao_celular.perguntar(_celular_args(), _claude_env(), prompt,
-                                          float(celular_cfg().get("timeout_seconds", 60)))
-    if data is None:
-        log.error("celular: claude falhou: %s", err[:500])
-        return "Nao consegui falar com o Claude, senhor."
-    resposta = (data.get("result") or "").strip()
-    log.info("celular, resposta: %s", resposta[:500])
-    return clean_for_speech(resposta) or "Nao tenho nada a dizer, senhor."
+    prompt = f"[Hora local: {agora}]\n{_tarefas_resumo() if modo != 'completo' else ''}{texto}"
+    data, err = _celular_claude(prompt, modo)
+    return _celular_resposta(data, err, modo)
 
 
 _stt_celular = threading.Lock()
@@ -1284,7 +1485,7 @@ def celular_falar(texto: str) -> bytes | None:
     import soundfile as sf
 
     gerar = _gerador_de_voz()
-    texto = clean_for_speech(texto)
+    texto = clean_for_speech(texto).replace(" O restante esta salvo no arquivo.", " O restante esta na tela.")
     if gerar is None or not texto:
         return None
     pedacos: list[np.ndarray] = []
@@ -1410,7 +1611,9 @@ def celular_iniciar() -> None:
 
     celular.iniciar(CFG, celular.Ganchos(
         transcrever=celular_transcrever, perguntar=responder_celular, falar=celular_falar, tarefas=celular_tarefas,
-        tarefa_adicionar=celular_tarefa_adicionar, tarefa_concluir=celular_tarefa_concluir, resumo=celular_resumo))
+        tarefa_adicionar=celular_tarefa_adicionar, tarefa_concluir=celular_tarefa_concluir, resumo=celular_resumo,
+        confirmar=celular_confirmar, acesso=celular_acesso, acesso_baixar=celular_acesso_baixar,
+        atividade=celular_atividade))
 
 
 def celular_token_cli() -> None:
@@ -2420,6 +2623,10 @@ def run_tray() -> None:
     def restaurar_painel(_i=None, _it=None):
         painel_geom_resetar()
 
+    def alternar_celular(_i=None, _it=None):
+        # Interruptor geral: desliga (ou religa) as acoes do celular na hora; sem acoes, o celular so consulta.
+        celular_acesso_ajustar("consulta" if celular_acesso() == "completo" else "completo")
+
     def alternar_inicio(_i=None, _it=None):
         autostart_disable() if autostart_enabled() else autostart_enable()
 
@@ -2440,6 +2647,8 @@ def run_tray() -> None:
         pystray.MenuItem(f"Painel rápido ({painel_cfg().get('hotkey', 'ctrl+alt+t')})", abrir_painel),
         pystray.MenuItem("Restaurar posição do painel", restaurar_painel),
         pystray.MenuItem("Testar som", testar_som),
+        pystray.MenuItem("Celular: ações liberadas", alternar_celular, checked=lambda _it: celular_acesso() == "completo",
+                         visible=lambda _it: bool(celular_cfg().get("enabled", False))),
         pystray.MenuItem("Mostrar esfera", alternar_overlay, checked=lambda _it: CURRENT.get("esfera_visivel", True)),
         pystray.MenuItem("Abrir histórico", abrir_historico),
         pystray.MenuItem("Nova conversa", nova),
