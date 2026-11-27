@@ -252,7 +252,7 @@ def test_erro_do_gancho_nao_vaza_detalhes():
     g = falso.ganchos()
 
     def quebra(_t):
-        raise RuntimeError("segredo interno C:\\Users\\x")
+        raise RuntimeError("segredo interno /dados/privados")
 
     g.perguntar = quebra
     srv, base = _subir(g)
@@ -451,13 +451,42 @@ def test_responder_celular_espera_se_o_jarvis_do_pc_esta_ocupado(monkeypatch, li
         jarvis._busy.release()
 
 
-def test_responder_celular_espera_se_a_memoria_esta_no_limite(monkeypatch, lista):
-    monkeypatch.setattr(jarvis._sessao_celular, "perguntar", lambda *a: pytest.fail("nao devia chamar o Claude"))
+def _celular_com_memoria(monkeypatch, info, cfg=None):
     monkeypatch.setattr(jarvis._sessao_celular, "vivo", lambda: False)
-    monkeypatch.setattr(jarvis, "sistema_info", lambda: {"mem": 95})
-    monkeypatch.setitem(jarvis.CFG, "celular", {})
+    monkeypatch.setattr(jarvis, "sistema_info", lambda: info)
+    monkeypatch.setitem(jarvis.CFG, "celular", cfg or {})
+    chamadas = []
+    monkeypatch.setattr(jarvis._sessao_celular, "perguntar", lambda *a: (chamadas.append(1), ({"result": "Pronto."}, ""))[1])
+    return chamadas
+
+
+def test_responder_celular_espera_se_falta_memoria_disponivel(monkeypatch, lista):
+    chamadas = _celular_com_memoria(monkeypatch, {"mem": 96, "livre_mb": 200})
     with pytest.raises(celular.Ocupado, match="memoria"):
         jarvis.responder_celular("qual a previsao do tempo?")
+    assert chamadas == []
+
+
+def test_memoria_percentual_alta_mas_com_mb_de_sobra_nao_recusa(monkeypatch, lista):
+    # o que importa e a memoria DISPONIVEL: 97% em uso com 900 MB sobrando (cache) deixa o celular responder
+    chamadas = _celular_com_memoria(monkeypatch, {"mem": 97, "livre_mb": 900})
+    assert jarvis.responder_celular("qual a previsao do tempo?") == "Pronto." and chamadas == [1]
+
+
+def test_limite_de_memoria_do_celular_e_ajustavel(monkeypatch, lista):
+    chamadas = _celular_com_memoria(monkeypatch, {"mem": 96, "livre_mb": 200}, {"mem_min_livre_mb": 0})  # 0 = sem limite
+    assert jarvis.responder_celular("oi") == "Pronto." and chamadas == [1]
+    _celular_com_memoria(monkeypatch, {"mem": 96, "livre_mb": 900}, {"mem_min_livre_mb": 1000})
+    with pytest.raises(celular.Ocupado):
+        jarvis.responder_celular("oi")
+    _celular_com_memoria(monkeypatch, {"mem": 96, "livre_mb": 900}, {"mem_max_pct": 95})  # limite percentual opcional
+    with pytest.raises(celular.Ocupado):
+        jarvis.responder_celular("oi")
+
+
+def test_sistema_info_informa_a_memoria_disponivel():
+    info = jarvis.sistema_info()
+    assert info["livre_mb"] > 0 and 0 <= info["mem"] <= 100
 
 
 def test_responder_celular_com_claude_aberto_nao_checa_memoria_e_limpa_a_fala(monkeypatch, lista):
@@ -510,14 +539,18 @@ def test_celular_conclui_mas_nao_remove_nem_desfaz(lista):
 
 
 def test_tarefa_adicionar_pelo_campo_da_tela(lista):
-    r = jarvis.celular_tarefa_adicionar("revisar contrato", None)  # sem data: pede o prazo, nada criado ainda
-    assert r["pergunta"] is True and lista.abertas() == []
-    r = jarvis.celular_tarefa_adicionar("revisar contrato", "amanhã")
-    assert r["mudou"] and [t["prazo"] for t in lista.abertas()] == ["2026-11-28"]
-    r = jarvis.celular_tarefa_adicionar("ligar para a Ana", "")  # "sem data"
-    assert r["mudou"] and len(lista.abertas()) == 2
+    # sem data no texto: entra sem data, sem perguntar "para quando?" (mesmo com perguntar_prazo ligado no PC)
+    r = jarvis.celular_tarefa_adicionar("revisar contrato", None)
+    assert r["mudou"] and r["pergunta"] is False and [t["prazo"] for t in lista.abertas()] == [None]
+    r = jarvis.celular_tarefa_adicionar("ligar para a Ana para sexta", None)  # data dita no texto vale
+    assert r["mudou"] and sorted(t["prazo"] or "" for t in lista.abertas()) == ["", "2026-12-04"]
+    r = jarvis.celular_tarefa_adicionar("pagar boleto", "amanhã")  # escolha explicita continua valendo
+    assert r["mudou"] and "2026-11-28" in [t["prazo"] for t in lista.abertas()]
+    r = jarvis.celular_tarefa_adicionar("comprar pão", "")  # "sem data"
+    assert r["mudou"] and len(lista.abertas()) == 4
     r = jarvis.celular_tarefa_adicionar("outra coisa", "quando der na telha")
-    assert r["erro"] and r["pergunta"] and len(lista.abertas()) == 2
+    assert r["erro"] and r["pergunta"] and len(lista.abertas()) == 4
+    assert lista.pendente_prazo is None  # nada pendente no PC
 
 
 def test_tarefas_e_concluir_pelo_celular(lista):
@@ -635,3 +668,160 @@ def test_celular_transcrever_audio_curto_ou_longo_e_pc_ocupado(monkeypatch):
             jarvis.celular_transcrever(b"qualquer")
     finally:
         jarvis._busy.release()
+
+
+# ------------------------------------------------------------------ aba Painel: /api/resumo
+def test_resumo_exige_token_e_devolve_os_dados():
+    falso = _Falso()
+    g = falso.ganchos()
+    g.resumo = lambda: {"agora": 1, "sistema": {"cpu": 10}, "tarefas": {"abertas": 3}}
+    srv, base = _subir(g)
+    try:
+        assert _chamar(base, "/api/resumo", token=None)[0] == 401
+        code, r, _ = _chamar(base, "/api/resumo")
+        assert code == 200 and r["ok"] is True and r["sistema"] == {"cpu": 10} and r["tarefas"]["abertas"] == 3
+        assert _chamar(base, "/api/resumo", {"a": 1})[0] == 404  # so leitura: POST nao existe
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_resumo_sem_gancho_e_com_erro_nao_vaza(servidor):
+    base, _, _ = servidor
+    assert _chamar(base, "/api/resumo")[0] == 404  # o _Falso padrao nao traz resumo
+    g = _Falso().ganchos()
+
+    def quebra():
+        raise RuntimeError("segredo /dados/privados")
+
+    g.resumo = quebra
+    srv, base2 = _subir(g)
+    try:
+        code, r, _ = _chamar(base2, "/api/resumo")
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert code == 500 and r["ok"] is False and "segredo" not in json.dumps(r)
+
+
+def _resumo_com(monkeypatch, lista, **over):
+    monkeypatch.setitem(jarvis._cpu_prev_canais, "celular", (0, 0, 0))
+    monkeypatch.setattr(jarvis, "sistema_info", lambda canal="": {"cpu": 12, "mem": 94, "livre_mb": 800, "uptime_s": 99, "extra": 1})
+    monkeypatch.setitem(jarvis.CFG, "painel", {"clima": {"enabled": False}, "musica": {"enabled": False},
+                                               "uso_claude": {"enabled": False}})
+    for k, v in over.items():
+        monkeypatch.setattr(jarvis, k, v)
+    return jarvis._montar_resumo()
+
+
+def test_resumo_so_traz_o_que_o_celular_precisa(monkeypatch, lista):
+    lista.adicionar("vencida", prazo="2026-11-20")
+    lista.adicionar("de hoje", prazo="2026-11-27")
+    lista.adicionar("sem data")
+    r = _resumo_com(monkeypatch, lista)
+    assert r["sistema"] == {"cpu": 12, "mem": 94, "livre_mb": 800, "uptime_s": 99}  # sem campos a mais
+    assert r["tarefas"] == {"abertas": 3, "hoje": 1, "vencidas": 1}
+    assert "clima" not in r and "uso" not in r and "musica" not in r  # desligados no config
+    assert set(r) == {"agora", "sistema", "tarefas"}
+
+
+def test_resumo_inclui_clima_uso_e_musica_ligados(monkeypatch, lista):
+    import clima
+    import musica
+    import uso_claude
+
+    monkeypatch.setattr(clima, "obter", lambda cfg: {"ok": True, "temp": 23, "condicao": "Nublado", "icone": "nuvem", "cidade": "X"})
+    monkeypatch.setattr(uso_claude, "obter", lambda: {"ok": True, "plano": "Pro", "limites": []})
+    monkeypatch.setattr(musica, "snapshot", lambda app: {"ativo": True, "app": "Spotify", "titulo": "T", "artista": "A", "estado": "tocando",
+                                                          "posicao_s": 1, "duracao_s": 2, "capa": True, "cor": "#fff", "pode": {}})
+    r = _resumo_com(monkeypatch, lista, clima_cfg=lambda: {"enabled": True}, uso_claude_ligado=lambda: True, musica_ligada=lambda: True)
+    assert r["clima"]["temp"] == 23 and r["uso"]["plano"] == "Pro"
+    assert r["musica"] == {"ativo": True, "app": "Spotify", "titulo": "T", "artista": "A", "estado": "tocando",
+                           "posicao_s": 1, "duracao_s": 2}  # sem capa, cor nem controles
+
+
+def test_cada_parte_do_resumo_falha_sozinha(monkeypatch, lista):
+    import clima
+
+    def quebra(*a, **k):
+        raise RuntimeError("falhou")
+
+    monkeypatch.setattr(clima, "obter", quebra)
+    lista.adicionar("uma")
+    r = _resumo_com(monkeypatch, lista, clima_cfg=lambda: {"enabled": True})
+    assert "clima" not in r and r["tarefas"]["abertas"] == 1 and r["sistema"]["cpu"] == 12
+
+
+def test_resumo_usa_cache_curto(monkeypatch, lista):
+    chamadas = []
+    monkeypatch.setattr(jarvis, "_montar_resumo", lambda: (chamadas.append(1), {"agora": len(chamadas)})[1])
+    monkeypatch.setitem(jarvis._resumo_celular, "dados", None)
+    a, b = jarvis.celular_resumo(), jarvis.celular_resumo()
+    assert a is b and len(chamadas) == 1
+    monkeypatch.setitem(jarvis._resumo_celular, "quando", time.monotonic() - jarvis.RESUMO_TTL - 1)
+    assert jarvis.celular_resumo()["agora"] == 2
+
+
+def test_cpu_do_celular_tem_janela_propria(monkeypatch):
+    monkeypatch.setattr(jarvis, "_cpu_prev", None)
+    monkeypatch.setattr(jarvis, "_cpu_prev_canais", {})
+    jarvis.sistema_info("celular")
+    assert jarvis._cpu_prev is None and "celular" in jarvis._cpu_prev_canais  # nao encurta a medida do painel do PC
+    jarvis.sistema_info()
+    assert jarvis._cpu_prev is not None
+
+
+def test_pagina_tem_as_tres_abas():
+    html = (Path(__file__).resolve().parent.parent / "celular.html").read_text(encoding="utf-8")
+    for id_ in ("v-conversa", "v-painel", "v-tarefas", "n-conversa", "n-painel", "n-tarefas", "c-hoje", "c-uso", "c-tarefas", "c-musica"):
+        assert f'id="{id_}"' in html, id_
+    assert "/api/resumo" in html
+
+
+# ------------------------------------------------------------------ widget do iPhone (Scriptable)
+WIDGET = Path(__file__).resolve().parent.parent / "docs" / "widget" / "jarvis-tarefas.js"
+
+
+def test_widget_nao_traz_endereco_nem_token_e_so_le_tarefas():
+    js = WIDGET.read_text(encoding="utf-8")
+    assert "Keychain.set(CHAVE_URL" in js and "Keychain.set(CHAVE_TOKEN" in js  # guarda no Keychain do iPhone
+    assert "/api/tarefas" in js and "/api/perguntar" not in js and "/api/falar" not in js
+    assert "ts.net" not in js.replace("meu-pc.minha-rede.ts.net", "")  # so o exemplo generico
+    assert 'method = "POST"' not in js
+
+
+def test_widget_tem_sintaxe_valida():
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node nao instalado")
+    r = subprocess.run([node, "--check", str(WIDGET)], capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr
+
+
+# ------------------------------------------------------------------ comando de voz de tarefas no celular
+@pytest.mark.parametrize("frase", ["anote tarefa comprar café", "inclua uma tarefa comprar café", "nova tarefa comprar café",
+                                   "adicione a tarefa comprar café", "anota aí comprar café"])
+def test_voz_no_celular_anota_sem_perguntar_a_data(monkeypatch, lista, frase):
+    monkeypatch.setattr(jarvis, "_busy", threading.Lock())
+    monkeypatch.setattr(jarvis._sessao_celular, "perguntar", lambda *a: pytest.fail("tarefa nao vai ao Claude"))
+    r = jarvis.responder_celular(frase)
+    assert r.startswith("Anotado") and "quando" not in r.lower()
+    assert [t["texto"] for t in lista.abertas()] == ["comprar café"] and lista.abertas()[0]["prazo"] is None
+    assert lista.pendente_prazo is None  # nada ficou esperando resposta
+
+
+def test_voz_no_celular_com_data_dita_usa_a_data(lista):
+    r = jarvis.responder_celular("anote tarefa ligar para o contador para amanhã")
+    assert "amanhã" in r and [t["prazo"] for t in lista.abertas()] == ["2026-11-28"]
+
+
+def test_voz_no_celular_conclui_de_varias_formas(lista):
+    for texto in ("pagar o boleto", "ligar para o contador", "revisar contrato", "enviar relatório"):
+        lista.adicionar(texto)
+    assert jarvis.responder_celular("marque a tarefa 1 como concluída").startswith("Conclu")
+    assert jarvis.responder_celular("já fiz a tarefa do contador").startswith("Conclu")
+    assert jarvis.responder_celular("pronto, terminei a tarefa do relatório").startswith("Conclu")
+    assert [t["texto"] for t in lista.abertas()] == ["revisar contrato"]

@@ -219,10 +219,20 @@ class Tarefas:
 # ------------------------------------------------------------------ interpretacao da fala
 _PREF = r"^(?:jarvis\W+)?(?:por favor\W*)?"
 _ADD = re.compile(_PREF + r"(?P<v>insira|insere|inserir|anote|anota|anotar|registre|registra|registrar|adicione|adiciona|"
-                  r"adicionar|crie|cria|criar|coloque|coloca|colocar)\b[\s,:\-]*(?P<resto>.+)$", re.I | re.S)
+                  r"adicionar|inclua|inclui|incluir|crie|cria|criar|coloque|coloca|colocar)\b[\s,:\-]*(?P<resto>.+)$", re.I | re.S)
+_NOVA = re.compile(_PREF + r"(?:nova\s+tarefa|tarefa\s+nova)\b[\s,:\-]*(?P<resto>.+)$", re.I | re.S)
 _DONE = re.compile(_PREF + r"(?P<v>conclua|conclui|concluir|finalize|finaliza|finalizar|risque|riscar|"
-                   r"marque\s+como\s+(?:feita|feito|conclu[ií]da|conclu[ií]do|pronta|pronto)|d[êe]\s+baixa(?:\s+(?:na|em))?)"
+                   r"(?:marque|marcar|marca)\s+como\s+(?:feita|feito|conclu[ií]da|conclu[ií]do|pronta|pronto)|d[êe]\s+baixa(?:\s+(?:na|em))?)"
                    r"\b[\s,:\-]*(?P<ref>.+)$", re.I | re.S)
+_PRONTO = r"(?:(?:pronto|ok|certo|feito)\W+)?"  # "pronto, terminei a tarefa..."
+_FEITA = r"(?:feit[ao]|conclu[ií]d[ao]|pront[ao]|resolvid[ao]|finalizad[ao])"
+_DONE_MARCA = re.compile(_PREF + _PRONTO + r"(?:marque|marcar|marca)\s+(?P<ref>.+?)\s+como\s+" + _FEITA + r"[\s.!?]*$", re.I | re.S)
+_DONE_DE = re.compile(_PREF + _PRONTO + r"(?:d[êe]|dar|da)\s+como\s+" + _FEITA + r"\b[\s,:\-]*(?P<ref>.+)$", re.I | re.S)
+# passado e sufixo so valem com a palavra "tarefa" (senao "ja fiz o almoco" viraria comando)
+_DONE_PASSADO = re.compile(_PREF + _PRONTO + r"(?:j[áa]\s+)?(?:fiz|terminei|finalizei|conclu[ií]|completei)\s+"
+                           r"(?P<ref>(?:a\s+|essa\s+|esta\s+)?tarefa\b.+)$", re.I | re.S)
+_DONE_SUFIXO = re.compile(_PREF + _PRONTO + r"(?P<ref>(?:a\s+)?tarefa\s+.+?)\s+(?:(?:est[áa]|ficou)\s+)?" + _FEITA + r"[\s.!?]*$",
+                          re.I | re.S)
 _REM = re.compile(_PREF + r"(?P<v>remova|remove|remover|exclua|exclui|excluir|apague|apaga|apagar|delete|tire|tira|"
                   r"cancele|cancela)\b[\s,:\-]*(?P<ref>.+)$", re.I | re.S)
 _UNDO = re.compile(_PREF + r"(?:desfa[çc]a|desfazer|desfaz)\b", re.I)
@@ -231,6 +241,7 @@ _LISTA = re.compile(_PREF + r"(?:liste|lista|leia|ler|mostre|mostra|quais|qual|m
 _SUF_LISTA = re.compile(r"\s+(?:na|à|a|em|para\s+a|pra)\s+(?:minha\s+|nossa\s+)?(?:lista(?:\s+de\s+(?:tarefas|afazeres))?|tarefas)[\s.!?]*$", re.I)
 _PRE_LISTA = re.compile(r"^(?:na|à|a)\s+(?:minha\s+|nossa\s+)?lista(?:\s+de\s+(?:tarefas|afazeres))?\s*[:,\-]?\s*", re.I)
 _PLURAL = re.compile(r"^(?:\d+|duas|dois|tr[êe]s|quatro|cinco|seis|v[áa]rias|algumas|as|minhas|novas)\s+(?:novas\s+)?tarefas\b", re.I)
+_FILLER = re.compile(r"^(?:a[ií]|ent[ãa]o)\s*[,:]?\s+", re.I)  # "anota ai comprar cafe"
 _PRE_TAREFA = re.compile(r"^(?:uma\s+|a\s+|essa\s+|esta\s+)?(?:nova\s+)?tarefa\s*[:,\-]?\s*", re.I)
 
 
@@ -373,6 +384,10 @@ def _fala_prazo(prazo: str | None, hoje: date) -> str:
 def _adicao(t: str) -> tuple[str, str]:
     """Frase de "anote/insira/adicione ... tarefa" -> ("ok", texto da tarefa); ("plural", _) se for varias/ditado longo
     (quem interpreta e o Claude); ("nao", _) se nao for pedido de adicionar."""
+    nova = _NOVA.match(t)
+    if nova:  # "nova tarefa comprar cafe": o proprio pedido ja diz que e tarefa
+        resto = _FILLER.sub("", nova.group("resto"))
+        return ("plural", "") if _PLURAL.match(resto) or len(resto) > 220 else ("ok", _SUF_LISTA.sub("", resto))
     m = _ADD.match(t)
     if not m:
         return "nao", ""
@@ -387,6 +402,7 @@ def _adicao(t: str) -> tuple[str, str]:
         return "plural", ""
     resto = _PRE_LISTA.sub("", resto)
     resto = _PRE_TAREFA.sub("", resto)
+    resto = _FILLER.sub("", resto)
     return "ok", _SUF_LISTA.sub("", resto)
 
 
@@ -417,7 +433,8 @@ def responder(texto: str, lista: Tarefas) -> str | None:
             fala += " Para quando? Pode dizer a data, ou sem data."
         return fala
 
-    for padrao, acao in ((_DONE, "concluir"), (_REM, "remover")):
+    for padrao, acao in ((_DONE, "concluir"), (_DONE_MARCA, "concluir"), (_DONE_DE, "concluir"), (_DONE_PASSADO, "concluir"),
+                         (_DONE_SUFIXO, "concluir"), (_REM, "remover")):
         m = padrao.match(t)
         if not m:
             continue

@@ -319,3 +319,46 @@ def test_cli(tmp_path, monkeypatch, capsys):
     assert tarefas.main(["done", "inexistente"]) == 1
     with pytest.raises(ValueError):
         tarefas.main(["add", "x", "--prazo", "31/12/2026"])
+
+
+# ------------------------------------------------------------------ mais formas de falar (celular e PC)
+@pytest.mark.parametrize("frase", [
+    "inclua uma tarefa comprar café", "incluir tarefa comprar café", "inclui a tarefa comprar café",
+    "nova tarefa comprar café", "tarefa nova: comprar café", "Jarvis, nova tarefa, comprar café", "anota aí comprar café",
+])
+def test_formas_faladas_de_adicionar(lista, frase):
+    assert tarefas.responder(frase, lista).startswith("Anotado")
+    assert [t["texto"] for t in lista.abertas()] == ["comprar café"]
+
+
+@pytest.fixture()
+def lista_tres(lista):
+    for t in ("pagar o boleto", "ligar para o contador", "revisar contrato de Bertioga"):
+        lista.adicionar(t)
+    return lista
+
+
+@pytest.mark.parametrize("frase,sobra", [
+    ("marque a tarefa 1 como concluída", {"ligar para o contador", "revisar contrato de Bertioga"}),
+    ("marcar como concluída a tarefa do contador", {"pagar o boleto", "revisar contrato de Bertioga"}),
+    ("marca a tarefa do boleto como feita", {"ligar para o contador", "revisar contrato de Bertioga"}),
+    ("dê como concluída a tarefa 2", {"pagar o boleto", "revisar contrato de Bertioga"}),
+    ("dar como feita a tarefa do boleto", {"ligar para o contador", "revisar contrato de Bertioga"}),
+    ("já fiz a tarefa do boleto", {"ligar para o contador", "revisar contrato de Bertioga"}),
+    ("pronto, terminei a tarefa do contador", {"pagar o boleto", "revisar contrato de Bertioga"}),
+    ("tarefa 1 concluída", {"ligar para o contador", "revisar contrato de Bertioga"}),
+    ("a tarefa do boleto está concluída", {"ligar para o contador", "revisar contrato de Bertioga"}),
+    ("marque o boleto como feito", {"ligar para o contador", "revisar contrato de Bertioga"}),
+])
+def test_formas_faladas_de_concluir(lista_tres, frase, sobra):
+    assert tarefas.responder(frase, lista_tres).startswith("Conclu")
+    assert {t["texto"] for t in lista_tres.abertas()} == sobra
+
+
+@pytest.mark.parametrize("frase", [
+    "marque uma reunião para amanhã", "já fiz o almoço", "inclua o João no e-mail", "nova reunião com o Pedro",
+    "a reunião está concluída", "terminei o relatório", "marque como lido", "dê como certo",
+])
+def test_frases_parecidas_nao_viram_comando_de_tarefa(lista_tres, frase):
+    assert tarefas.responder(frase, lista_tres) is None
+    assert len(lista_tres.abertas()) == 3

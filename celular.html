@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#070b16">
+<meta name="theme-color" content="#090d16">
 <meta name="color-scheme" content="dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -15,81 +15,124 @@
 <title>Jarvis</title>
 <style>
 :root{
-  --bg:#070b16; --bg2:#0d1530; --card:rgba(255,255,255,.06); --line:rgba(255,255,255,.11);
-  --txt:#e8edf8; --mut:#8e9ab8; --ciano:#3cc8ff; --violeta:#9664ff; --ok:#3ddc84; --aviso:#f5be3c; --erro:#ff5a5a;
+  --txt:#eaf1fb; --mut:#8fa1ba; --faint:#5d6f88; --line:rgba(255,255,255,.085);
+  --ac1:#4dd5ff; --ac2:#7c5cff; --grad:linear-gradient(135deg,var(--ac1),var(--ac2));
+  --ok:#34d399; --warn:#fbbf24; --bad:#fb7185;
+  --glass:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.03));
   --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;margin:0}
-body{background:radial-gradient(120% 80% at 50% 0%,var(--bg2),var(--bg) 70%) fixed;color:var(--txt);
-  font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;overscroll-behavior:none;
-  display:flex;flex-direction:column;height:100dvh;overflow:hidden}
+body{color:var(--txt);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;overscroll-behavior:none;
+  display:flex;flex-direction:column;height:100dvh;overflow:hidden;-webkit-font-smoothing:antialiased;
+  background:
+    radial-gradient(90% 55% at 0% 0%,rgba(40,120,170,.34),transparent 62%),
+    radial-gradient(80% 55% at 100% 100%,rgba(110,70,220,.30),transparent 64%),
+    linear-gradient(160deg,#0e1726 0%,#090d16 100%) fixed}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
-button:focus-visible,input:focus-visible{outline:2px solid var(--ciano);outline-offset:2px}
+button:focus-visible,input:focus-visible{outline:2px solid var(--ac1);outline-offset:2px}
+[hidden]{display:none!important}
 header{display:flex;align-items:center;gap:10px;padding:calc(var(--safe-t) + 10px) 16px 6px}
-header h1{font-size:18px;font-weight:600;letter-spacing:.04em;margin:0;flex:1}
-.ponto{width:9px;height:9px;border-radius:50%;background:var(--mut);box-shadow:0 0 0 3px rgba(255,255,255,.05)}
-.ponto.on{background:var(--ok)} .ponto.off{background:var(--erro)}
+header h1{font-size:17px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;margin:0;flex:1}
+.ponto{width:9px;height:9px;border-radius:50%;background:var(--faint);box-shadow:0 0 0 3px rgba(255,255,255,.05)}
+.ponto.on{background:var(--ok);box-shadow:0 0 0 3px rgba(52,211,153,.18)} .ponto.off{background:var(--bad);box-shadow:0 0 0 3px rgba(251,113,133,.18)}
 .ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:var(--mut)}
-.ico:active{background:var(--card)} .ico svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.ico.on{color:var(--ciano)}
-main{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+.ico:active{background:rgba(255,255,255,.08)}
+.ico.on{color:var(--ac1)}
+svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+main{flex:1;min-height:0;position:relative}
 .vista{position:absolute;inset:0;display:none;flex-direction:column;min-height:0}
 .vista.ativa{display:flex}
+.card{background:var(--glass);border:1px solid var(--line);border-radius:20px;padding:14px 16px;position:relative;overflow:hidden;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 8px 22px rgba(0,0,0,.28)}
+.lbl{font-size:11px;font-weight:700;letter-spacing:.17em;text-transform:uppercase;color:var(--ac1);opacity:.9;display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.lbl .sp{flex:1}.lbl .nota{letter-spacing:0;text-transform:none;font-weight:500;color:var(--mut);font-size:12px}
 /* conversa */
-.orbe{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;padding:4px 0 2px}
-#orbe{width:176px;height:176px;touch-action:manipulation}
-#estado{color:var(--mut);font-size:13px;height:18px;margin-top:-4px}
+.orbe{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;padding:2px 0 0}
+#orbe{width:190px;height:190px;touch-action:manipulation}
+#estado{color:var(--mut);font-size:13px;height:18px;margin-top:-6px}
 #chat{flex:1;min-height:0;overflow-y:auto;padding:8px 16px;display:flex;flex-direction:column;gap:8px;scroll-behavior:smooth}
-.msg{max-width:86%;padding:9px 13px;border-radius:16px;border:1px solid var(--line);background:var(--card);
+.msg{max-width:86%;padding:10px 14px;border-radius:18px;border:1px solid var(--line);background:var(--glass);
   white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px}
-.msg.eu{align-self:flex-end;background:linear-gradient(135deg,rgba(60,200,255,.20),rgba(150,100,255,.20))}
+.msg.eu{align-self:flex-end;background:linear-gradient(135deg,rgba(77,213,255,.20),rgba(124,92,255,.22))}
 .msg.jarvis{align-self:flex-start}
-.msg.erro{align-self:center;color:var(--erro);border-color:rgba(255,90,90,.4);font-size:14px}
+.msg.erro{align-self:center;color:var(--bad);border-color:rgba(251,113,133,.4);font-size:14px}
 .vazio{margin:auto;color:var(--mut);text-align:center;padding:0 24px;font-size:14px}
 .compor{display:flex;align-items:center;gap:8px;padding:8px 12px 10px}
-#texto{flex:1;min-width:0;height:44px;border-radius:22px;border:1px solid var(--line);background:var(--card);color:var(--txt);
-  padding:0 16px;font-size:16px}
-#texto::placeholder{color:var(--mut)}
-.enviar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:var(--ciano)}
-.enviar svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.mic{width:64px;height:64px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;color:#06101c;
-  background:linear-gradient(135deg,var(--ciano),var(--violeta));box-shadow:0 6px 22px rgba(80,150,255,.35)}
-.mic svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.mic.gravando{background:var(--erro);color:#fff;box-shadow:0 0 0 8px rgba(255,90,90,.18);animation:pulso 1.2s infinite}
+#texto{flex:1;min-width:0;height:46px;border-radius:23px;border:1px solid var(--line);background:var(--glass);color:var(--txt);padding:0 16px;font-size:16px}
+#texto::placeholder{color:var(--faint)}
+.enviar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:var(--ac1)}
+.mic{width:64px;height:64px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;color:#06101c;background:var(--grad);box-shadow:0 8px 24px rgba(90,140,255,.38)}
+.mic svg.i{width:28px;height:28px;stroke-width:2}
+.mic.gravando{background:var(--bad);color:#fff;box-shadow:0 0 0 8px rgba(251,113,133,.2);animation:pulso 1.2s infinite}
 .mic:disabled{opacity:.45}
-@keyframes pulso{50%{box-shadow:0 0 0 14px rgba(255,90,90,.06)}}
+@keyframes pulso{50%{box-shadow:0 0 0 14px rgba(251,113,133,.07)}}
+/* painel */
+.rolagem{flex:1;min-height:0;overflow-y:auto;padding:4px 14px 14px;display:flex;flex-direction:column;gap:12px}
+.rolagem>*{flex:none}
+.saud{padding:2px 4px 0}.saud b{display:block;font-size:22px;font-weight:700}.saud span{color:var(--mut);font-size:14px}
+.hoje-topo{display:flex;align-items:center;gap:14px}
+.clima-ico{width:56px;height:56px;border-radius:18px;display:grid;place-items:center;color:var(--ac1);background:rgba(77,213,255,.10);border:1px solid rgba(77,213,255,.18)}
+.clima-ico svg.i{width:32px;height:32px;stroke-width:1.6}
+.clima-temp{font-size:38px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.clima-cond{color:var(--mut);font-size:13px;margin-top:3px}
+.mini{margin-top:14px;display:grid;gap:10px}
+.mini .lin{display:grid;gap:5px}
+.mini .topo{display:flex;justify-content:space-between;font-size:13px;color:var(--mut)}
+.mini .topo b{color:var(--txt);font-variant-numeric:tabular-nums}
+.barra{height:6px;border-radius:99px;background:rgba(255,255,255,.09);overflow:hidden}
+.barra i{display:block;height:100%;border-radius:99px;background:var(--grad);transition:width .6s}
+.barra i.cpu{background:linear-gradient(90deg,var(--ok),#a3e635)}
+.barra i.atencao{background:var(--warn)} .barra i.critico{background:var(--bad)}
+.uso-linha+.uso-linha{margin-top:14px}
+.uso-topo{display:flex;align-items:baseline;gap:8px;font-size:14px}
+.uso-nome{font-weight:600}.uso-pct{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums}
+.uso-pct.atencao{color:var(--warn)}.uso-pct.critico{color:var(--bad)}
+.uso-linha .barra{height:8px;margin-top:6px}
+.uso-sub{font-size:12px;color:var(--mut);margin-top:4px}
+.aviso-card{font-size:13px;color:var(--mut);padding:2px 0}.aviso-card.velho{color:var(--warn)}
+.numeros{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.num{border-radius:14px;padding:10px;text-align:center;background:rgba(255,255,255,.045);border:1px solid var(--line)}
+.num b{display:block;font-size:24px;font-variant-numeric:tabular-nums}.num span{font-size:12px;color:var(--mut)}
+.num.vencida b{color:var(--bad)}.num.hoje b{color:var(--warn)}
+.prox{margin-top:12px;display:grid;gap:8px}
+.prox div{display:flex;gap:10px;align-items:center;font-size:14px}
+.prox div::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ac1);flex:none}
+.prox span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ver{margin-top:12px;color:var(--ac1);font-size:14px;font-weight:600}
+.musica-tit{font-size:16px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.musica-art{color:var(--mut);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mprog{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;margin-top:10px;font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums}
+.rodape{text-align:center;color:var(--faint);font-size:12px;padding:2px 0 6px}
 /* tarefas */
-.cab{padding:6px 16px 4px;color:var(--mut);font-size:13px;letter-spacing:.06em;text-transform:uppercase}
-#lista{flex:1;min-height:0;overflow-y:auto;padding:4px 12px}
-.tarefa{display:flex;align-items:flex-start;gap:12px;padding:12px;margin-bottom:8px;border-radius:14px;border:1px solid var(--line);background:var(--card)}
-.check{flex:0 0 auto;width:26px;height:26px;border-radius:50%;border:2px solid var(--mut);margin-top:1px;display:grid;place-items:center}
+#lista{flex:1;min-height:0;overflow-y:auto;padding:4px 14px}
+.tarefa{display:flex;align-items:flex-start;gap:12px;padding:13px 14px;margin-bottom:8px;border-radius:16px;border:1px solid var(--line);background:var(--glass)}
+.check{flex:0 0 auto;width:26px;height:26px;border-radius:50%;border:2px solid var(--faint);margin-top:1px}
 .check:active{border-color:var(--ok)}
 .tarefa .t{flex:1;min-width:0;overflow-wrap:anywhere}
-.badge{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--mut);white-space:nowrap;align-self:center}
-.badge.hoje{color:var(--aviso);border-color:rgba(245,190,60,.5)} .badge.vencida{color:var(--erro);border-color:rgba(255,90,90,.5)}
-.badge.alta{color:var(--erro)}
+.badge{font-size:12px;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--mut);white-space:nowrap;align-self:center}
+.badge.hoje{color:var(--warn);border-color:rgba(251,191,36,.5)}.badge.vencida,.badge.alta{color:var(--bad);border-color:rgba(251,113,133,.5)}
 .feita{opacity:.5;text-decoration:line-through}
 .feitas-t{margin:10px 4px 4px;color:var(--mut);font-size:13px}
 .nova{padding:8px 12px 10px}
 .nova form{display:flex;gap:8px}
+#nova{flex:1;min-width:0;height:46px;border-radius:23px;border:1px solid var(--line);background:var(--glass);color:var(--txt);padding:0 16px;font-size:16px}
 .chips{display:flex;flex-wrap:wrap;gap:8px;padding:0 0 8px}
-.chip{padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);font-size:14px}
-.chip:active{background:rgba(60,200,255,.2)}
-.aviso{margin:0 12px 8px;padding:8px 12px;border-radius:12px;background:rgba(60,200,255,.12);font-size:14px}
+.chip{padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--glass);font-size:14px}
+.chip:active{background:rgba(77,213,255,.2)}
+.aviso{margin:0 0 8px;padding:8px 12px;border-radius:12px;background:rgba(77,213,255,.12);font-size:14px}
 /* navegacao */
-nav{display:flex;border-top:1px solid var(--line);background:rgba(7,11,22,.85);backdrop-filter:blur(12px);padding-bottom:var(--safe-b)}
-nav button{flex:1;height:52px;color:var(--mut);font-size:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
-nav button.ativa{color:var(--ciano)}
-nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav{display:flex;border-top:1px solid var(--line);background:rgba(9,13,22,.82);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);padding-bottom:var(--safe-b)}
+nav button{flex:1;height:54px;color:var(--faint);font-size:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+nav button.ativa{color:var(--ac1)}
 /* token */
-#entrada{position:fixed;inset:0;background:rgba(5,8,16,.94);display:none;place-items:center;padding:24px;z-index:10}
+#entrada{position:fixed;inset:0;background:rgba(6,9,16,.96);display:none;place-items:center;padding:24px;z-index:10}
 #entrada.ativa{display:grid}
 #entrada form{width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px}
-#entrada h2{margin:0;font-weight:600} #entrada p{margin:0;color:var(--mut);font-size:14px}
-#entrada input{height:46px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--txt);padding:0 14px;font-size:16px}
-#entrada .ok{height:46px;border-radius:12px;background:linear-gradient(135deg,var(--ciano),var(--violeta));color:#06101c;font-weight:600}
-#erro-token{color:var(--erro);font-size:14px;min-height:20px}
+#entrada h2{margin:0;font-weight:700;letter-spacing:.2em;text-transform:uppercase}#entrada p{margin:0;color:var(--mut);font-size:14px}
+#entrada input{height:46px;border-radius:12px;border:1px solid var(--line);background:var(--glass);color:var(--txt);padding:0 14px;font-size:16px}
+#entrada .ok{height:46px;border-radius:12px;background:var(--grad);color:#06101c;font-weight:700}
+#erro-token{color:var(--bad);font-size:14px;min-height:20px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
@@ -98,10 +141,10 @@ nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;st
   <span class="ponto" id="ponto" title="conexão"></span>
   <h1>Jarvis</h1>
   <button class="ico on" id="b-voz" aria-label="Voz do Jarvis ligada" title="Voz do Jarvis">
-    <svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+    <svg class="i" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
   </button>
   <button class="ico" id="b-sair" aria-label="Trocar token" title="Trocar token">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
   </button>
 </header>
 
@@ -111,30 +154,75 @@ nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;st
     <div id="chat"><div class="vazio" id="vazio">Toque no microfone e fale, ou digite abaixo.<br>Aqui o Jarvis só consulta; ações ficam para o computador.</div></div>
     <form class="compor" id="f-texto" autocomplete="off">
       <input id="texto" type="text" inputmode="text" enterkeyhint="send" placeholder="Digite ao Jarvis" maxlength="500" aria-label="Mensagem">
-      <button class="enviar" type="submit" aria-label="Enviar"><svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button>
+      <button class="enviar" type="submit" aria-label="Enviar"><svg class="i" viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></button>
       <button class="mic" type="button" id="mic" aria-label="Falar com o Jarvis">
-        <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+        <svg class="i" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
       </button>
     </form>
   </section>
 
+  <section class="vista" id="v-painel">
+    <div class="rolagem">
+      <div class="saud"><b id="saud">Olá, senhor</b><span id="data"></span></div>
+
+      <div class="card" id="c-hoje">
+        <div class="lbl">Hoje<span class="sp"></span><span class="nota" id="hoje-nota"></span></div>
+        <div class="hoje-topo">
+          <div class="clima-ico" id="clima-ico"></div>
+          <div><div class="clima-temp" id="clima-temp">--</div><div class="clima-cond" id="clima-cond">Sem dados do clima</div></div>
+        </div>
+        <div class="mini" id="pc" hidden>
+          <div class="lin"><div class="topo"><span>Processador do PC</span><b id="pc-cpu"></b></div><div class="barra"><i class="cpu" id="pc-cpu-b"></i></div></div>
+          <div class="lin"><div class="topo"><span id="pc-mem-t">Memória do PC</span><b id="pc-mem"></b></div><div class="barra"><i id="pc-mem-b"></i></div></div>
+        </div>
+      </div>
+
+      <div class="card" id="c-uso" hidden>
+        <div class="lbl">Claude<span class="sp"></span><span class="nota" id="uso-nota"></span></div>
+        <div id="uso-linhas"></div>
+        <div class="aviso-card" id="uso-aviso" hidden></div>
+      </div>
+
+      <div class="card" id="c-tarefas">
+        <div class="lbl">Tarefas</div>
+        <div class="numeros">
+          <div class="num"><b id="n-ab">–</b><span>abertas</span></div>
+          <div class="num hoje"><b id="n-hoje">–</b><span>para hoje</span></div>
+          <div class="num vencida"><b id="n-venc">–</b><span>vencidas</span></div>
+        </div>
+        <div class="prox" id="prox"></div>
+        <button class="ver" id="ver-tarefas" type="button">Ver todas as tarefas</button>
+      </div>
+
+      <div class="card" id="c-musica" hidden>
+        <div class="lbl">Música<span class="sp"></span><span class="nota" id="m-app"></span></div>
+        <div class="musica-tit" id="m-tit"></div>
+        <div class="musica-art" id="m-art"></div>
+        <div class="mprog"><span id="m-pos">0:00</span><div class="barra"><i id="m-fill" style="width:0"></i></div><span id="m-dur">0:00</span></div>
+      </div>
+
+      <div class="rodape" id="rodape"></div>
+    </div>
+  </section>
+
   <section class="vista" id="v-tarefas">
-    <div class="cab">Tarefas abertas</div>
+    <div class="lbl" style="padding:6px 18px 0">Tarefas abertas</div>
     <div id="lista"></div>
     <div class="nova">
       <div class="aviso" id="aviso" hidden></div>
       <div class="chips" id="chips" hidden></div>
       <form id="f-tarefa" autocomplete="off">
-        <input id="nova" type="text" enterkeyhint="done" placeholder="Nova tarefa (ex.: revisar contrato sexta)" maxlength="300" aria-label="Nova tarefa" style="flex:1;min-width:0;height:44px;border-radius:22px;border:1px solid var(--line);background:var(--card);color:var(--txt);padding:0 16px;font-size:16px">
-        <button class="enviar" type="submit" aria-label="Adicionar"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+        <input id="nova" type="text" enterkeyhint="done" placeholder="Nova tarefa (ex.: revisar contrato para sexta)" maxlength="300" aria-label="Nova tarefa">
+        <button class="enviar" type="submit" aria-label="Adicionar"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
       </form>
     </div>
   </section>
 </main>
 
 <nav>
-  <button id="n-conversa" class="ativa"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>Conversa</button>
-  <button id="n-tarefas"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3.5 6 1.2 1.2L7 5M3.5 12l1.2 1.2L7 11M3.5 18l1.2 1.2L7 17"/></svg>Tarefas</button>
+  <button id="n-conversa" class="ativa"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>Conversa</button>
+  <button id="n-painel"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="9" rx="2"/><rect x="13.5" y="3" width="7.5" height="5" rx="2"/><rect x="13.5" y="11" width="7.5" height="10" rx="2"/><rect x="3" y="15" width="7.5" height="6" rx="2"/></svg>Painel</button>
+  <button id="n-tarefas"><svg class="i" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3.5 6 1.2 1.2L7 5M3.5 12l1.2 1.2L7 11M3.5 18l1.2 1.2L7 17"/></svg>Tarefas</button>
 </nav>
 
 <div id="entrada">
@@ -184,7 +272,7 @@ async function api(caminho, { metodo, json, corpo, tipo, audio } = {}) {
     throw e;
   } finally { clearTimeout(prazo); }
 }
-function ponto(sim) { const p = $("#ponto"); p.className = "ponto " + (sim ? "on" : "off"); }
+function ponto(sim) { $("#ponto").className = "ponto " + (sim ? "on" : "off"); }
 async function testarConexao() {
   if (!token) return false;
   try { const d = await fetch("/api/ping", { headers: { Authorization: "Bearer " + token } }); ponto(d.ok); return d.ok; }
@@ -208,30 +296,32 @@ $("#f-token").addEventListener("submit", async e => {
 $("#b-sair").addEventListener("click", () => { if (confirm("Trocar o token deste aparelho?")) { guarda.apagar("jarvis_token"); token = ""; pedirToken(""); } });
 
 /* ---------- esfera ---------- */
-const COR = { idle: [60, 150, 255], listening: [61, 220, 132], thinking: [245, 190, 60], speaking: [0, 210, 230], error: [255, 90, 90] };
+const COR = { idle: [77, 150, 255], listening: [52, 211, 153], thinking: [251, 191, 36], speaking: [77, 213, 255], error: [251, 113, 133] };
 const NOME = { idle: "", listening: "Ouvindo…", thinking: "Pensando…", speaking: "Falando…", error: "" };
 const cv = $("#orbe"), cx = cv.getContext("2d");
 let corAtual = COR.idle.slice(), fase = 0;
 function ajustarCanvas() { const d = Math.min(devicePixelRatio || 1, 3), l = cv.clientWidth; cv.width = cv.height = Math.round(l * d); }
 function desenhar(t) {
   fase = t / 1000;
-  const alvo = COR[estado] || COR.idle;
-  for (let i = 0; i < 3; i++) corAtual[i] += (alvo[i] - corAtual[i]) * 0.08;
-  const n = cv.width, c = n / 2;
-  const nv = estado === "speaking" ? 0.35 + 0.35 * Math.abs(Math.sin(fase * 7.3) * Math.sin(fase * 3.1)) : estado === "listening" ? nivel : 0;
-  const resp = estado === "thinking" ? Math.sin(fase * 4) * 0.05 : Math.sin(fase * 1.4) * 0.025;
-  const r = n * (0.22 + resp + nv * 0.12);
-  cx.clearRect(0, 0, n, n);
-  const [R, G, B] = corAtual.map(Math.round);
-  const halo = cx.createRadialGradient(c, c, r * 0.4, c, c, n * 0.5);
-  halo.addColorStop(0, `rgba(${R},${G},${B},.35)`); halo.addColorStop(1, `rgba(${R},${G},${B},0)`);
-  cx.fillStyle = halo; cx.fillRect(0, 0, n, n);
-  const g = cx.createRadialGradient(c - r * 0.3, c - r * 0.35, r * 0.1, c, c, r);
-  g.addColorStop(0, "#ffffff"); g.addColorStop(0.25, `rgb(${R},${G},${B})`); g.addColorStop(1, `rgba(${Math.round(R * .45 + 70)},${Math.round(G * .3 + 40)},${Math.round(B * .5 + 120)},.95)`);
-  cx.beginPath(); cx.arc(c, c, r, 0, 7); cx.fillStyle = g; cx.fill();
-  cx.lineWidth = n * 0.006; cx.strokeStyle = `rgba(${R},${G},${B},.55)`;
-  for (let k = 1; k <= 2; k++) { cx.beginPath(); cx.arc(c, c, r * (1 + k * 0.22 + nv * 0.1 * k) + Math.sin(fase * 2 + k) * n * 0.004, 0, 7); cx.globalAlpha = 0.5 / k; cx.stroke(); }
-  cx.globalAlpha = 1;
+  if (!document.hidden && $("#v-conversa").classList.contains("ativa")) {
+    const alvo = COR[estado] || COR.idle;
+    for (let i = 0; i < 3; i++) corAtual[i] += (alvo[i] - corAtual[i]) * 0.08;
+    const n = cv.width, c = n / 2;
+    const nv = estado === "speaking" ? 0.35 + 0.35 * Math.abs(Math.sin(fase * 7.3) * Math.sin(fase * 3.1)) : estado === "listening" ? nivel : 0;
+    const resp = estado === "thinking" ? Math.sin(fase * 4) * 0.05 : Math.sin(fase * 1.4) * 0.025;
+    const r = n * (0.22 + resp + nv * 0.12);
+    cx.clearRect(0, 0, n, n);
+    const [R, G, B] = corAtual.map(Math.round);
+    const halo = cx.createRadialGradient(c, c, r * 0.4, c, c, n * 0.5);
+    halo.addColorStop(0, `rgba(${R},${G},${B},.35)`); halo.addColorStop(1, `rgba(${R},${G},${B},0)`);
+    cx.fillStyle = halo; cx.fillRect(0, 0, n, n);
+    const g = cx.createRadialGradient(c - r * 0.3, c - r * 0.35, r * 0.1, c, c, r);
+    g.addColorStop(0, "#ffffff"); g.addColorStop(0.25, `rgb(${R},${G},${B})`); g.addColorStop(1, `rgba(${Math.round(R * .45 + 70)},${Math.round(G * .3 + 40)},${Math.round(B * .5 + 120)},.95)`);
+    cx.beginPath(); cx.arc(c, c, r, 0, 7); cx.fillStyle = g; cx.fill();
+    cx.lineWidth = n * 0.006; cx.strokeStyle = `rgba(${R},${G},${B},.55)`;
+    for (let k = 1; k <= 2; k++) { cx.beginPath(); cx.arc(c, c, r * (1 + k * 0.22 + nv * 0.1 * k) + Math.sin(fase * 2 + k) * n * 0.004, 0, 7); cx.globalAlpha = 0.5 / k; cx.stroke(); }
+    cx.globalAlpha = 1;
+  }
   requestAnimationFrame(desenhar);
 }
 function definirEstado(e, texto) { estado = e; $("#estado").textContent = texto !== undefined ? texto : NOME[e] || ""; }
@@ -388,14 +478,16 @@ function rotuloPrazo(p) {
   if (dias === 1) return ["", "amanhã"];
   return ["", d + " " + MESES[m - 1]];
 }
+let tarefasCache = [];
 async function carregarTarefas() {
   if (!token) return;
   try {
     const d = await api("/api/tarefas");
     if (d.ok === false) return;
+    tarefasCache = d.abertas || [];
     const box = $("#lista"); box.textContent = "";
-    if (!(d.abertas || []).length) { const v = document.createElement("div"); v.className = "vazio"; v.textContent = "Nenhuma tarefa aberta."; box.appendChild(v); }
-    for (const t of d.abertas || []) {
+    if (!tarefasCache.length) { const v = document.createElement("div"); v.className = "vazio"; v.textContent = "Nenhuma tarefa aberta."; box.appendChild(v); }
+    for (const t of tarefasCache) {
       const li = document.createElement("div"); li.className = "tarefa";
       const b = document.createElement("button"); b.className = "check"; b.setAttribute("aria-label", "Concluir: " + t.texto);
       b.addEventListener("click", async () => { b.disabled = true; li.style.opacity = ".4"; try { await api("/api/tarefas/concluir", { json: { id: t.id } }); } catch {} carregarTarefas(); });
@@ -410,6 +502,7 @@ async function carregarTarefas() {
       const h = document.createElement("div"); h.className = "feitas-t"; h.textContent = "Concluídas recentemente"; box.appendChild(h);
       for (const t of d.concluidas) { const li = document.createElement("div"); li.className = "tarefa feita"; const tx = document.createElement("div"); tx.className = "t"; tx.textContent = t.texto; li.appendChild(tx); box.appendChild(li); }
     }
+    if ($("#v-painel").classList.contains("ativa")) mostrarProximas();
   } catch {}
 }
 let pendente = "";
@@ -433,14 +526,132 @@ async function adicionarTarefa(texto, quando) {
 }
 $("#f-tarefa").addEventListener("submit", e => { e.preventDefault(); const t = $("#nova").value.trim(); if (t) adicionarTarefa(t); });
 
+/* ---------- painel (clima, PC, Claude, tarefas, música) ---------- */
+const NS = "http://www.w3.org/2000/svg";
+const ICONES = {   // traços simples; montados com o DOM (nada de HTML vindo de fora)
+  sol: ["M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z", "M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"],
+  lua: ["M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"],
+  nuvem: ["M7 19a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 10a4.5 4.5 0 0 1 .5 9z"],
+  "nuvem-sol": ["M7 20a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 11a4.5 4.5 0 0 1 .5 9z", "M5 8.5 4 7.5M9 5V3.5M13 6.5l1-1M3 12H1.8"],
+  "nuvem-lua": ["M7 20a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 11a4.5 4.5 0 0 1 .5 9z", "M8.5 6.4A3.5 3.5 0 1 1 12.9 3a2.7 2.7 0 0 0-4.4 3.4z"],
+  chuva: ["M7 14a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 5a4.5 4.5 0 0 1 .5 9z", "M8 17l-1 3M12 17l-1 3M16 17l-1 3"],
+  neve: ["M7 14a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 5a4.5 4.5 0 0 1 .5 9z", "M8 18h.01M12 20h.01M16 18h.01M10 22h.01M14 22h.01"],
+  tempestade: ["M7 14a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 5a4.5 4.5 0 0 1 .5 9z", "M12.5 14 10 18h4l-2.5 4"],
+  neblina: ["M4 9h16M3 13h18M5 17h14"],
+};
+function icone(nome) {
+  const s = document.createElementNS(NS, "svg"); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("class", "i");
+  for (const d of ICONES[nome] || ICONES.nuvem) { const p = document.createElementNS(NS, "path"); p.setAttribute("d", d); s.appendChild(p); }
+  return s;
+}
+const hhmm = d => d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+const mmss = s => { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+function nivelBarra(p) { return p >= 90 ? "critico" : p >= 70 ? "atencao" : ""; }
+function reiniciaEm(ts) {
+  if (!ts) return "";
+  const d = new Date(ts * 1000), min = Math.max(0, Math.round((d - Date.now()) / 60000));
+  const h = Math.floor(min / 60), m = min % 60;
+  const dia = Math.floor(h / 24), resto = h % 24;
+  const quanto = dia ? `${dia} d ${resto} h` : h ? `${h} h ${m} min` : `${m} min`;
+  return `reinicia em ${quanto} · ${hhmm(d)}`;
+}
+let resumo = null, musicaT0 = 0;
+function renderPainel() {
+  const h = new Date().getHours();
+  $("#saud").textContent = (h < 5 ? "Boa madrugada" : h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite") + ", senhor";
+  $("#data").textContent = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+  const r = resumo;
+  if (!r) return;
+  // Hoje: clima + PC
+  const cl = r.clima;
+  const ic = $("#clima-ico"); ic.textContent = "";
+  if (cl && cl.ok) {
+    ic.appendChild(icone(cl.icone));
+    $("#clima-temp").textContent = cl.temp + "°";
+    $("#clima-cond").textContent = cl.condicao + (cl.cidade ? " · " + cl.cidade : "");
+  } else { ic.appendChild(icone("nuvem")); $("#clima-temp").textContent = "--"; $("#clima-cond").textContent = cl && cl.desligado ? "Clima desligado" : "Sem dados do clima"; }
+  const s = r.sistema;
+  $("#pc").hidden = !s;
+  if (s) {
+    $("#pc-cpu").textContent = s.cpu + "%"; $("#pc-cpu-b").style.width = s.cpu + "%"; $("#pc-cpu-b").className = "cpu " + nivelBarra(s.cpu);
+    $("#pc-mem").textContent = s.mem + "% · " + (s.livre_mb >= 1024 ? (s.livre_mb / 1024).toFixed(1) + " GB" : s.livre_mb + " MB") + " livres";
+    $("#pc-mem-b").style.width = s.mem + "%"; $("#pc-mem-b").className = nivelBarra(s.mem);
+    const hh = Math.floor((s.uptime_s || 0) / 3600);
+    $("#hoje-nota").textContent = "PC ligado há " + (hh >= 24 ? Math.floor(hh / 24) + " d" : hh + " h");
+  }
+  // Claude
+  const u = r.uso, cu = $("#c-uso");
+  cu.hidden = !u || !!u.desligado;
+  if (u && !u.desligado) {
+    $("#uso-nota").textContent = u.ok && u.plano ? u.plano : "";
+    const box = $("#uso-linhas"); box.textContent = "";
+    const av = $("#uso-aviso"); av.hidden = true; av.classList.remove("velho");
+    if (!u.ok) { av.hidden = false; av.textContent = u.motivo || "Consumo indisponível."; }
+    for (const l of u.ok ? u.limites || [] : []) {
+      const w = document.createElement("div"); w.className = "uso-linha";
+      const top = document.createElement("div"); top.className = "uso-topo";
+      const n = document.createElement("span"); n.className = "uso-nome"; n.textContent = l.nome;
+      const p = document.createElement("span"); p.className = "uso-pct " + (l.nivel === "normal" ? "" : l.nivel); p.textContent = l.pct + "%";
+      top.append(n, p);
+      const b = document.createElement("div"); b.className = "barra"; const bi = document.createElement("i");
+      bi.style.width = l.pct + "%"; if (l.nivel && l.nivel !== "normal") bi.className = l.nivel; b.appendChild(bi);
+      const sub = document.createElement("div"); sub.className = "uso-sub"; sub.textContent = reiniciaEm(l.reinicia);
+      w.append(top, b, sub); box.appendChild(w);
+    }
+    if (u.ok && u.velho) { av.hidden = false; av.classList.add("velho"); av.textContent = "Dados antigos: " + (u.motivo || "sem atualizar agora"); }
+  }
+  // Tarefas
+  const t = r.tarefas;
+  $("#n-ab").textContent = t ? t.abertas : "–"; $("#n-hoje").textContent = t ? t.hoje : "–"; $("#n-venc").textContent = t ? t.vencidas : "–";
+  mostrarProximas();
+  // Música
+  const m = r.musica, vivo = !!(m && m.ativo && m.titulo);
+  $("#c-musica").hidden = !vivo;
+  if (vivo) {
+    $("#m-app").textContent = m.app || ""; $("#m-tit").textContent = m.titulo; $("#m-art").textContent = m.artista || "";
+    $("#m-dur").textContent = mmss(m.duracao_s); musicaT0 = performance.now(); progressoMusica();
+  }
+  $("#rodape").textContent = "Atualizado às " + hhmm(new Date((r.agora || Date.now() / 1000) * 1000));
+}
+function progressoMusica() {
+  const m = resumo && resumo.musica;
+  if (!m || !m.ativo) return;
+  let pos = (m.posicao_s || 0) + (m.estado === "tocando" ? (performance.now() - musicaT0) / 1000 : 0);
+  if (m.duracao_s) pos = Math.min(pos, m.duracao_s);
+  $("#m-pos").textContent = mmss(pos); $("#m-fill").style.width = (m.duracao_s ? Math.min(100, pos / m.duracao_s * 100) : 0) + "%";
+}
+function mostrarProximas() {
+  const box = $("#prox"); box.textContent = "";
+  for (const t of tarefasCache.slice(0, 3)) { const d = document.createElement("div"), s = document.createElement("span"); s.textContent = t.texto; d.appendChild(s); box.appendChild(d); }
+}
+let painelOcupado = false;
+async function carregarPainel() {
+  if (!token || painelOcupado || document.hidden || !$("#v-painel").classList.contains("ativa")) return;
+  painelOcupado = true;
+  try {
+    const [d] = await Promise.all([api("/api/resumo"), carregarTarefas()]);
+    if (d && d.ok !== false) { resumo = d; ponto(true); } else if (!resumo) { $("#rodape").textContent = (d && d.texto) || "Painel indisponível."; }
+  } catch { ponto(false); $("#rodape").textContent = resumo ? "Sem conexão: dados antigos." : "Não alcancei o Jarvis."; }
+  finally { painelOcupado = false; renderPainel(); }
+}
+setInterval(carregarPainel, 30000); setInterval(progressoMusica, 500);
+setInterval(() => { if ($("#v-painel").classList.contains("ativa") && resumo) renderPainel(); }, 60000);
+$("#ver-tarefas").addEventListener("click", () => ir("tarefas"));
+
 /* ---------- navegação ---------- */
 function ir(nome) {
-  for (const n of ["conversa", "tarefas"]) { $("#v-" + n).classList.toggle("ativa", n === nome); $("#n-" + n).classList.toggle("ativa", n === nome); }
+  for (const n of ["conversa", "painel", "tarefas"]) { $("#v-" + n).classList.toggle("ativa", n === nome); $("#n-" + n).classList.toggle("ativa", n === nome); }
   if (nome === "tarefas") carregarTarefas();
+  if (nome === "painel") { renderPainel(); carregarPainel(); }
 }
 $("#n-conversa").addEventListener("click", () => ir("conversa"));
+$("#n-painel").addEventListener("click", () => ir("painel"));
 $("#n-tarefas").addEventListener("click", () => ir("tarefas"));
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { testarConexao(); if ($("#v-tarefas").classList.contains("ativa")) carregarTarefas(); } });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  testarConexao(); carregarPainel();
+  if ($("#v-tarefas").classList.contains("ativa")) carregarTarefas();
+});
 
 /* ---------- partida ---------- */
 (async () => {

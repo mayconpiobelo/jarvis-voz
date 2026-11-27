@@ -59,6 +59,7 @@ class Ganchos:
     tarefas: Callable[[], dict]                            # {"abertas": [...], "concluidas": [...]}
     tarefa_adicionar: Callable[[str, str | None], dict]    # (texto, quando|None) -> {"ok", "mensagem", "pergunta"}
     tarefa_concluir: Callable[[int], bool]
+    resumo: Callable[[], dict] | None = None               # clima, PC, uso do Claude, musica e contagem de tarefas (so leitura)
 
 
 def host_permitido(host: str) -> bool:
@@ -291,6 +292,12 @@ def criar_servidor(host: str, porta: int, token: str, g: Ganchos) -> ThreadingHT
                 return self._json(200, True, texto="Jarvis ao seu dispor, senhor.")
             if caminho == "/api/tarefas":
                 return self._json(200, True, **g.tarefas())
+            if caminho == "/api/resumo" and g.resumo is not None:
+                try:
+                    return self._json(200, True, **g.resumo())
+                except Exception:
+                    log.exception("erro no resumo do celular")
+                    return self._erro(500, "Nao consegui montar o painel.")
             self._erro(404, "Nao encontrado.")
 
         def do_POST(self) -> None:  # noqa: N802
